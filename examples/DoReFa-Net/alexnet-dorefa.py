@@ -18,7 +18,7 @@ from tensorpack.tfutils.varreplace import remap_variables
 from tensorpack.dataflow import dataset
 from tensorpack.utils.gpu import get_nr_gpu
 
-from imagenet_utils import get_imagenet_dataflow, fbresnet_augmentor
+from imagenet_utils import get_imagenet_dataflow, eval_on_ILSVRC12, fbresnet_augmentor
 from dorefa import get_dorefa
 
 """
@@ -200,6 +200,10 @@ def get_config():
     )
 
 
+def get_inference_augmentor():
+    return fbresnet_augmentor(False)
+
+
 def run_image(model, sess_init, inputs):
     pred_config = PredictConfig(
         model=model,
@@ -250,6 +254,7 @@ if __name__ == '__main__':
                         help='number of bits for W,A,G, separated by comma', required=True)
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
+    parser.add_argument('--eval', action='store_true')
     args = parser.parse_args()
 
     BITW, BITA, BITG = map(int, args.dorefa.split(','))
@@ -257,17 +262,24 @@ if __name__ == '__main__':
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    if args.run:
+    if args.eval:
+        ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
+        ds = AugmentImageComponent(ds, get_inference_augmentor())
+        ds = BatchData(ds, 192, remainder=True)
+        eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
+
+    elif args.run:
         assert args.load.endswith('.npy')
         run_image(Model(), DictRestore(
             np.load(args.load, encoding='latin1').item()), args.run)
         sys.exit()
 
-    nr_tower = max(get_nr_gpu(), 1)
-    BATCH_SIZE = TOTAL_BATCH_SIZE // nr_tower
-    logger.info("Batch per tower: {}".format(BATCH_SIZE))
+    else:
+        nr_tower = max(get_nr_gpu(), 1)
+        BATCH_SIZE = TOTAL_BATCH_SIZE // nr_tower
+        logger.info("Batch per tower: {}".format(BATCH_SIZE))
 
-    config = get_config()
-    if args.load:
-        config.session_init = SaverRestore(args.load)
-    launch_train_with_config(config, SyncMultiGPUTrainer(nr_tower))
+        config = get_config()
+        if args.load:
+            config.session_init = SaverRestore(args.load)
+        launch_train_with_config(config, SyncMultiGPUTrainer(nr_tower))
