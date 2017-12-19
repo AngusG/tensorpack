@@ -32,6 +32,7 @@ BITG = 32
 
 
 class Model(ModelDesc):
+
     def _get_inputs(self):
         return [InputDesc(tf.float32, [None, 224, 224, 3], 'input'),
                 InputDesc(tf.int32, [None], 'label')]
@@ -66,7 +67,8 @@ class Model(ModelDesc):
                         .Conv2D('c3x3b', channel, 3)())
             channel_mismatch = channel != x.get_shape().as_list()[3]
             if stride != 1 or channel_mismatch or 'pool1' in x.name:
-                # handling pool1 is to work around an architecture bug in our model
+                # handling pool1 is to work around an architecture bug in our
+                # model
                 if stride != 1 or 'pool1' in x.name:
                     x = AvgPooling('pool', x, stride, stride)
                 x = BatchNorm('bn', x)
@@ -105,7 +107,8 @@ class Model(ModelDesc):
                       .BatchNorm('lastbn')
                       .apply(nonlin)
                       .GlobalAvgPooling('gap')
-                      .tf.multiply(49)  # this is due to a bug in our model design
+                      # this is due to a bug in our model design
+                      .tf.multiply(49)
                       .FullyConnected('fct', 1000)())
         tf.nn.softmax(logits, name='output')
         ImageNetModel.compute_loss_and_error(logits, label)

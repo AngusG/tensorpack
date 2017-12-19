@@ -75,6 +75,7 @@ BATCH_SIZE = None
 
 
 class Model(ModelDesc):
+
     def _get_inputs(self):
         return [InputDesc(tf.float32, [None, 224, 224, 3], 'input'),
                 InputDesc(tf.int32, [None], 'label')]
@@ -145,7 +146,8 @@ class Model(ModelDesc):
 
         tf.nn.softmax(logits, name='output')
 
-        cost = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=label)
+        cost = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=logits, labels=label)
         cost = tf.reduce_mean(cost, name='cross_entropy_loss')
 
         wrong = prediction_incorrect(logits, label, 1, name='wrong-top1')
@@ -154,14 +156,16 @@ class Model(ModelDesc):
         add_moving_summary(tf.reduce_mean(wrong, name='train-error-top5'))
 
         # weight decay on all W of fc layers
-        wd_cost = regularize_cost('fc.*/W', l2_regularizer(5e-6), name='regularize_cost')
+        wd_cost = regularize_cost(
+            'fc.*/W', l2_regularizer(5e-6), name='regularize_cost')
 
         add_param_summary(('.*/W', ['histogram', 'rms']))
         self.cost = tf.add_n([cost, wd_cost], name='cost')
         add_moving_summary(cost, wd_cost, self.cost)
 
     def _get_optimizer(self):
-        lr = tf.get_variable('learning_rate', initializer=1e-4, trainable=False)
+        lr = tf.get_variable(
+            'learning_rate', initializer=1e-4, trainable=False)
         return tf.train.AdamOptimizer(lr, epsilon=1e-5)
 
 
@@ -186,7 +190,8 @@ def get_config():
                 'learning_rate', [(56, 2e-5), (64, 4e-6)]),
             InferenceRunner(data_test,
                             [ScalarStats('cost'),
-                             ClassificationError('wrong-top1', 'val-error-top1'),
+                             ClassificationError(
+                                 'wrong-top1', 'val-error-top1'),
                              ClassificationError('wrong-top5', 'val-error-top5')])
         ],
         model=Model(),
@@ -238,11 +243,13 @@ def run_image(model, sess_init, inputs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', help='the physical ids of GPUs to use')
-    parser.add_argument('--load', help='load a checkpoint, or a npy (given as the pretrained model)')
+    parser.add_argument(
+        '--load', help='load a checkpoint, or a npy (given as the pretrained model)')
     parser.add_argument('--data', help='ILSVRC dataset dir')
     parser.add_argument('--dorefa',
                         help='number of bits for W,A,G, separated by comma', required=True)
-    parser.add_argument('--run', help='run on a list of images with the pretrained model', nargs='*')
+    parser.add_argument(
+        '--run', help='run on a list of images with the pretrained model', nargs='*')
     args = parser.parse_args()
 
     BITW, BITA, BITG = map(int, args.dorefa.split(','))
@@ -252,7 +259,8 @@ if __name__ == '__main__':
 
     if args.run:
         assert args.load.endswith('.npy')
-        run_image(Model(), DictRestore(np.load(args.load, encoding='latin1').item()), args.run)
+        run_image(Model(), DictRestore(
+            np.load(args.load, encoding='latin1').item()), args.run)
         sys.exit()
 
     nr_tower = max(get_nr_gpu(), 1)
