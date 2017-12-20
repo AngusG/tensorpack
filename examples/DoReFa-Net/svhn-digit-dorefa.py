@@ -43,6 +43,7 @@ BITG = 4
 
 
 class Model(ModelDesc):
+
     def _get_inputs(self):
         return [InputDesc(tf.float32, [None, 40, 40, 3], 'input'),
                 InputDesc(tf.int32, [None], 'label')]
@@ -114,7 +115,8 @@ class Model(ModelDesc):
         # monitor training error
         add_moving_summary(tf.reduce_mean(wrong, name='train_error'))
 
-        cost = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=label)
+        cost = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=logits, labels=label)
         cost = tf.reduce_mean(cost, name='cross_entropy_loss')
         # weight decay on all W of fc layers
         wd_cost = regularize_cost('fc.*/W', l2_regularizer(1e-7))
@@ -170,6 +172,22 @@ def get_config():
     )
 
 
+def eval_on_SVHNDigit(model, sessinit, dataflow):
+    pred_config = PredictConfig(
+        model=model,
+        session_init=sessinit,
+        input_names=['input', 'label'],
+        output_names=['wrong-top1', 'wrong-top5']
+    )
+    pred = SimpleDatasetPredictor(pred_config, dataflow)
+    acc1, acc5 = RatioCounter(), RatioCounter()
+    for top1, top5 in pred.get_result():
+        batch_size = top1.shape[0]
+        acc1.feed(top1.sum(), batch_size)
+        acc5.feed(top5.sum(), batch_size)
+    print("Top1 Error: {}".format(acc1.ratio))
+    print("Top5 Error: {}".format(acc5.ratio))
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dorefa',
@@ -178,5 +196,20 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     BITW, BITA, BITG = map(int, args.dorefa.split(','))
-    config = get_config()
-    launch_train_with_config(config, SimpleTrainer())
+
+    if args.eval:
+        augmentors = [
+            imgaug.Resize((40, 40)),
+            imgaug.Brightness(30),
+            imgaug.Contrast((0.5, 1.5)),
+        ]
+
+        ds = dataset.SVHNDigit('test')
+        ds = AugmentImageComponent(data_test, augmentors)
+        ds = BatchData(ds, 128, remainder=True)
+        eval_on_SVHNDigit(Model(), get_model_loader(args.load), ds)
+
+    else:
+        # train from scratch
+        config = get_config()
+        launch_train_with_config(config, SimpleTrainer())
