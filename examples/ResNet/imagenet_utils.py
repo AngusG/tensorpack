@@ -130,6 +130,23 @@ def eval_on_ILSVRC12(model, sessinit, dataflow):
     print("Top5 Error: {}".format(acc5.ratio))
 
 
+def attack_on_ILSVRC12(model, sessinit, dataflow):
+    pred_config = PredictConfig(
+        model=model,
+        session_init=sessinit,
+        input_names=['input', 'label'],
+        output_names=['wrong-top1', 'wrong-top5']
+    )
+    pred = SimpleDatasetPredictor(pred_config, dataflow)
+    acc1, acc5 = RatioCounter(), RatioCounter()
+    for top1, top5 in pred.get_result():
+        batch_size = top1.shape[0]
+        acc1.feed(top1.sum(), batch_size)
+        acc5.feed(top5.sum(), batch_size)
+    print("Top1 Error: {}".format(acc1.ratio))
+    print("Top5 Error: {}".format(acc5.ratio))    
+
+
 class ImageNetModel(ModelDesc):
     weight_decay = 1e-4
     image_shape = 224
@@ -149,6 +166,7 @@ class ImageNetModel(ModelDesc):
                 InputDesc(tf.int32, [None], 'label')]
 
     def _build_graph(self, inputs):
+        print("Hello from _build_graph()")
         image, label = inputs
         image = self.image_preprocess(image, bgr=True)
         if self.data_format == 'NCHW':
@@ -193,9 +211,13 @@ class ImageNetModel(ModelDesc):
             return image
 
     @staticmethod
-    def compute_loss_and_error(logits, label):
+    def compute_loss_and_error(logits, label): #, image, eps):
+        print("Hello from compute_loss_and_error()")
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=label)
         loss = tf.reduce_mean(loss, name='xentropy-loss')
+
+        #grads = tf.gradients(loss, image)[0] 
+        #adv_image = tf.clip_by_value(image + eps / 256.0 * tf.sign(grads), 0, 1)       
 
         def prediction_incorrect(logits, label, topk=1, name='incorrect_vector'):
             with tf.name_scope('prediction_incorrect'):
