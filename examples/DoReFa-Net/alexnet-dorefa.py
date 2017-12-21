@@ -67,6 +67,8 @@ To Run Pretrained Model:
     ./alexnet-dorefa.py --load alexnet-126.npy --run a.jpg --dorefa 1,2,6
 """
 
+EPS = 16
+
 BITW = 1
 BITA = 2
 BITG = 6
@@ -144,11 +146,16 @@ class Model(ModelDesc):
                       .apply(nonlin)
                       .FullyConnected('fct', 1000, use_bias=True)())
 
-        tf.nn.softmax(logits, name='output')
+        output = tf.nn.softmax(logits, name='output')
+        #correct = tf.equal(tf.argmax(output, 1), label)
 
         cost = tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=logits, labels=label)
         cost = tf.reduce_mean(cost, name='cross_entropy_loss')
+
+        grads = tf.gradients(cost, image)[0]
+        adv_image = tf.clip_by_value(
+            image + EPS / 255.0 * tf.sign(grads), 0, 1, name='adv_x')
 
         wrong = prediction_incorrect(logits, label, 1, name='wrong-top1')
         add_moving_summary(tf.reduce_mean(wrong, name='train-error-top1'))
@@ -255,18 +262,30 @@ if __name__ == '__main__':
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
     parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--attack', action='store_true')
+    parser.add_argument("--eps", type=float, default=16.0)
     args = parser.parse_args()
 
     BITW, BITA, BITG = map(int, args.dorefa.split(','))
+    EPS = args.eps
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     if args.eval:
+        from imagenet_utils import eval_on_ILSVRC12
         ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
         ds = AugmentImageComponent(ds, get_inference_augmentor())
         ds = BatchData(ds, 192, remainder=True)
         eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
+
+    elif args.attack:
+        from imagenet_utils import attack_on_ILSVRC12
+        ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
+        ds = AugmentImageComponent(ds, get_inference_augmentor())
+        ds = BatchData(ds, 192, remainder=True)
+        print("Attacking with FGSM eps = %.2f" % EPS)
+        attack_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
     elif args.run:
         assert args.load.endswith('.npy')

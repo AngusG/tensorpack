@@ -18,6 +18,8 @@ from tensorpack.utils.stats import RatioCounter
 from tensorpack.models import regularize_cost
 from tensorpack.tfutils.summary import add_moving_summary
 
+import matplotlib.pyplot as plt
+
 
 class GoogleNetResize(imgaug.ImageAugmentor):
     """
@@ -145,14 +147,6 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
         output_names=['adv_x', 'wrong-top1', 'wrong-top5']
     )
 
-    # x = pred.predictor.input_tensors[0]  # (?, 224,224,3)
-    # loss = pred.predictor.output_tensors[0] # (?, 1000) loss
-    # evaluate a batch of adversarial images
-    #for adv_x in pred.get_result():
-        # x is the data (batch_size, 224, 224, 3) , y is the label (batch_size)
-    #for _, y in pred.dataset.get_data():
-        #sess.run(wrong_top1, feed_dict={x: adv_x, label: y})
-
     pred = SimpleDatasetPredictor(pred_config, dataflow)
 
     sess = pred.predictor.sess
@@ -165,30 +159,37 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
     cln_acc1, cln_acc5 = RatioCounter(), RatioCounter()
     adv_acc1, adv_acc5 = RatioCounter(), RatioCounter()
 
-    for ((adv_x, cln_top1, cln_top5), (__, y)) in zip(pred.get_result(), pred.dataset.get_data()):
-        
-        adv_top1 = sess.run(wrong_top1, feed_dict={x: adv_x, label: y})        
-        adv_top5 = sess.run(wrong_top5, feed_dict={x: adv_x, label: y})        
-        
+    for ((adv_x, cln_top1, cln_top5), (img, y)) in zip(pred.get_result(), pred.dataset.get_data()):
+
+        #img = img / 255.0
+
+        adv_top1 = sess.run(wrong_top1, feed_dict={x: adv_x * 255.0, label: y})
+        adv_top5 = sess.run(wrong_top5, feed_dict={x: adv_x * 255.0, label: y})
+
         adv_acc1.feed(adv_top1.sum(), batch_size)
         adv_acc5.feed(adv_top5.sum(), batch_size)
         cln_acc1.feed(cln_top1.sum(), batch_size)
         cln_acc5.feed(cln_top5.sum(), batch_size)
 
-        print("Cln Top1 Error: {}".format(cln_acc1.ratio))
-        print("Cln Top5 Error: {}".format(cln_acc5.ratio))
-        print("Adv Top1 Error: {}".format(adv_acc1.ratio))
-        print("Adv Top5 Error: {}".format(adv_acc5.ratio))
+        print("Cln Top1 Error: %.4f" % cln_acc1.ratio)
+        print("Cln Top5 Error: %.4f" % cln_acc5.ratio)
+        print("Adv Top1 Error: %.4f" % adv_acc1.ratio)
+        print("Adv Top5 Error: %.4f" % adv_acc5.ratio)
 
-    '''
-    acc1, acc5 = RatioCounter(), RatioCounter()    
-    for adv_x, top1, top5 in pred.get_result():
-        batch_size = top1.shape[0]        
-        acc1.feed(top1.sum(), batch_size)
-        acc5.feed(top5.sum(), batch_size)
-    print("Top1 Error: {}".format(acc1.ratio))
-    print("Top5 Error: {}".format(acc5.ratio))
-    '''
+        #mse = np.mean(np.square(adv_x - img))
+        #print("MSE: {}".format(mse))
+        '''
+        plt.subplot(121)
+        plot_imagenet_data(img[0], str(y[0]))
+        plt.subplot(122)
+        plot_imagenet_data(adv_x[0], 'Adversarial')
+        plt.pause(0.5)
+        '''
+
+def plot_imagenet_data(data, title):
+    plt.imshow(data)
+    plt.title(title)
+    plt.axis('off')
 
 
 class ImageNetModel(ModelDesc):
