@@ -145,26 +145,27 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
         output_names=['adv_x', 'wrong-top1', 'wrong-top5']
     )
 
-    pred = SimpleDatasetPredictor(pred_config, dataflow)
-
     # x = pred.predictor.input_tensors[0]  # (?, 224,224,3)
     # loss = pred.predictor.output_tensors[0] # (?, 1000) loss
-    sess = pred.predictor.sess
-    label = pred.predictor.input_tensors[1]
-    wrong_top1 = pred.predictor.output_tensors[1]
-    wrong_top5 = pred.predictor.output_tensors[2]
-
     # evaluate a batch of adversarial images
     #for adv_x in pred.get_result():
         # x is the data (batch_size, 224, 224, 3) , y is the label (batch_size)
     #for _, y in pred.dataset.get_data():
         #sess.run(wrong_top1, feed_dict={x: adv_x, label: y})
 
+    pred = SimpleDatasetPredictor(pred_config, dataflow)
+
+    sess = pred.predictor.sess
+    x = pred.predictor.input_tensors[0]
+    label = pred.predictor.input_tensors[1]
+    wrong_top1 = pred.predictor.output_tensors[1]
+    wrong_top5 = pred.predictor.output_tensors[2]
+
     batch_size = 192
     cln_acc1, cln_acc5 = RatioCounter(), RatioCounter()
     adv_acc1, adv_acc5 = RatioCounter(), RatioCounter()
 
-    for adv_x, cln_top1, cln_top5, __, y in zip(pred.get_result(), pred.dataset.get_data()):
+    for ((adv_x, cln_top1, cln_top5), (__, y)) in zip(pred.get_result(), pred.dataset.get_data()):
         
         adv_top1 = sess.run(wrong_top1, feed_dict={x: adv_x, label: y})        
         adv_top5 = sess.run(wrong_top5, feed_dict={x: adv_x, label: y})        

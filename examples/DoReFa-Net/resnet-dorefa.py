@@ -12,7 +12,7 @@ from tensorpack import *
 from tensorpack.dataflow import dataset
 from tensorpack.tfutils.varreplace import remap_variables
 
-from imagenet_utils import ImageNetModel, eval_on_ILSVRC12, fbresnet_augmentor
+from imagenet_utils import ImageNetModel, fbresnet_augmentor
 from dorefa import get_dorefa
 
 """
@@ -114,8 +114,12 @@ class Model(ModelDesc):
                       .FullyConnected('fct', 1000)())
         tf.nn.softmax(logits, name='output')
         ImageNetModel.compute_loss_and_error(logits, image, label, EPS)
-        #eps = 16.0 # maximum size of adversarial perturbation
+        # eps = 16.0 # maximum size of adversarial perturbation
         #ImageNetModel.compute_loss_and_error(logits, image, label, eps)
+
+
+def get_inference_augmentor():
+    return fbresnet_augmentor(False)
 
 
 class ResNetModel(object):
@@ -140,11 +144,6 @@ class ResNetModel(object):
         return probs
         '''
         model = Model()
-
-
-
-def get_inference_augmentor():
-    return fbresnet_augmentor(False)
 
 
 def run_image(model, sess_init, inputs):
@@ -185,6 +184,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
     parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--attack', action='store_true')
     parser.add_argument("--eps", type=float, default=16.0)
     args = parser.parse_args()
 
@@ -195,15 +195,18 @@ if __name__ == '__main__':
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     if args.eval:
+        from imagenet_utils import eval_on_ILSVRC12
         ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
         ds = AugmentImageComponent(ds, get_inference_augmentor())
         ds = BatchData(ds, 384, remainder=True)
         eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
     elif args.attack:
+        from imagenet_utils import attack_on_ILSVRC12
         ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
         ds = AugmentImageComponent(ds, get_inference_augmentor())
         ds = BatchData(ds, 192, remainder=True)
+        print("Attacking with FGSM eps = %.2f" % EPS)
         attack_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
     elif args.run:
