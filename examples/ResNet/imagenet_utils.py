@@ -24,6 +24,7 @@ class GoogleNetResize(imgaug.ImageAugmentor):
     crop 8%~100% of the original image
     See `Going Deeper with Convolutions` by Google.
     """
+
     def __init__(self, crop_area_fraction=0.08,
                  aspect_ratio_low=0.75, aspect_ratio_high=1.333,
                  target_shape=224):
@@ -34,7 +35,8 @@ class GoogleNetResize(imgaug.ImageAugmentor):
         area = h * w
         for _ in range(10):
             targetArea = self.rng.uniform(self.crop_area_fraction, 1.0) * area
-            aspectR = self.rng.uniform(self.aspect_ratio_low, self.aspect_ratio_high)
+            aspectR = self.rng.uniform(
+                self.aspect_ratio_low, self.aspect_ratio_high)
             ww = int(np.sqrt(targetArea * aspectR) + 0.5)
             hh = int(np.sqrt(targetArea / aspectR) + 0.5)
             if self.rng.uniform() < 0.5:
@@ -43,9 +45,11 @@ class GoogleNetResize(imgaug.ImageAugmentor):
                 x1 = 0 if w == ww else self.rng.randint(0, w - ww)
                 y1 = 0 if h == hh else self.rng.randint(0, h - hh)
                 out = img[y1:y1 + hh, x1:x1 + ww]
-                out = cv2.resize(out, (self.target_shape, self.target_shape), interpolation=cv2.INTER_CUBIC)
+                out = cv2.resize(
+                    out, (self.target_shape, self.target_shape), interpolation=cv2.INTER_CUBIC)
                 return out
-        out = imgaug.ResizeShortestEdge(self.target_shape, interp=cv2.INTER_CUBIC).augment(img)
+        out = imgaug.ResizeShortestEdge(
+            self.target_shape, interp=cv2.INTER_CUBIC).augment(img)
         out = imgaug.CenterCrop(self.target_shape).augment(out)
         return out
 
@@ -61,7 +65,8 @@ def fbresnet_augmentor(isTrain):
                 [imgaug.BrightnessScale((0.6, 1.4), clip=False),
                  imgaug.Contrast((0.6, 1.4), clip=False),
                  imgaug.Saturation(0.4, rgb=False),
-                 # rgb-bgr conversion for the constants copied from fb.resnet.torch
+                 # rgb-bgr conversion for the constants copied from
+                 # fb.resnet.torch
                  imgaug.Lighting(0.1,
                                  eigval=np.asarray(
                                      [0.2175, 0.0188, 0.0045][::-1]) * 255.0,
@@ -120,6 +125,7 @@ def eval_on_ILSVRC12(model, sessinit, dataflow):
         input_names=['input', 'label'],
         output_names=['wrong-top1', 'wrong-top5']
     )
+
     pred = SimpleDatasetPredictor(pred_config, dataflow)
     acc1, acc5 = RatioCounter(), RatioCounter()
     for top1, top5 in pred.get_result():
@@ -131,20 +137,57 @@ def eval_on_ILSVRC12(model, sessinit, dataflow):
 
 
 def attack_on_ILSVRC12(model, sessinit, dataflow):
+
     pred_config = PredictConfig(
         model=model,
         session_init=sessinit,
         input_names=['input', 'label'],
-        output_names=['wrong-top1', 'wrong-top5']
+        output_names=['adv_x', 'wrong-top1', 'wrong-top5']
     )
+
     pred = SimpleDatasetPredictor(pred_config, dataflow)
-    acc1, acc5 = RatioCounter(), RatioCounter()
-    for top1, top5 in pred.get_result():
-        batch_size = top1.shape[0]
+
+    # x = pred.predictor.input_tensors[0]  # (?, 224,224,3)
+    # loss = pred.predictor.output_tensors[0] # (?, 1000) loss
+    sess = pred.predictor.sess
+    label = pred.predictor.input_tensors[1]
+    wrong_top1 = pred.predictor.output_tensors[1]
+    wrong_top5 = pred.predictor.output_tensors[2]
+
+    # evaluate a batch of adversarial images
+    #for adv_x in pred.get_result():
+        # x is the data (batch_size, 224, 224, 3) , y is the label (batch_size)
+    #for _, y in pred.dataset.get_data():
+        #sess.run(wrong_top1, feed_dict={x: adv_x, label: y})
+
+    batch_size = 192
+    cln_acc1, cln_acc5 = RatioCounter(), RatioCounter()
+    adv_acc1, adv_acc5 = RatioCounter(), RatioCounter()
+
+    for adv_x, cln_top1, cln_top5, __, y in zip(pred.get_result(), pred.dataset.get_data()):
+        
+        adv_top1 = sess.run(wrong_top1, feed_dict={x: adv_x, label: y})        
+        adv_top5 = sess.run(wrong_top5, feed_dict={x: adv_x, label: y})        
+        
+        adv_acc1.feed(adv_top1.sum(), batch_size)
+        adv_acc5.feed(adv_top5.sum(), batch_size)
+        cln_acc1.feed(cln_top1.sum(), batch_size)
+        cln_acc5.feed(cln_top5.sum(), batch_size)
+
+        print("Cln Top1 Error: {}".format(cln_acc1.ratio))
+        print("Cln Top5 Error: {}".format(cln_acc5.ratio))
+        print("Adv Top1 Error: {}".format(adv_acc1.ratio))
+        print("Adv Top5 Error: {}".format(adv_acc5.ratio))
+
+    '''
+    acc1, acc5 = RatioCounter(), RatioCounter()    
+    for adv_x, top1, top5 in pred.get_result():
+        batch_size = top1.shape[0]        
         acc1.feed(top1.sum(), batch_size)
         acc5.feed(top5.sum(), batch_size)
     print("Top1 Error: {}".format(acc1.ratio))
-    print("Top5 Error: {}".format(acc5.ratio))    
+    print("Top5 Error: {}".format(acc5.ratio))
+    '''
 
 
 class ImageNetModel(ModelDesc):
@@ -211,13 +254,15 @@ class ImageNetModel(ModelDesc):
             return image
 
     @staticmethod
-    def compute_loss_and_error(logits, label): #, image, eps):
+    def compute_loss_and_error(logits, image, label, eps):
         print("Hello from compute_loss_and_error()")
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=label)
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=logits, labels=label)
         loss = tf.reduce_mean(loss, name='xentropy-loss')
 
-        #grads = tf.gradients(loss, image)[0] 
-        #adv_image = tf.clip_by_value(image + eps / 256.0 * tf.sign(grads), 0, 1)       
+        grads = tf.gradients(loss, image)[0]
+        adv_image = tf.clip_by_value(
+            image + eps / 256.0 * tf.sign(grads), 0, 1, name='adv_x')
 
         def prediction_incorrect(logits, label, topk=1, name='incorrect_vector'):
             with tf.name_scope('prediction_incorrect'):

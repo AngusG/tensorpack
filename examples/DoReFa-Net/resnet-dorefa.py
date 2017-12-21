@@ -26,6 +26,8 @@ To eval on ILSVRC validation set:
     ./resnet-dorefa.py --load pretrained.npy --eval --data /path/to/ILSVRC
 """
 
+EPS = 16
+
 BITW = 1
 BITA = 4
 BITG = 32
@@ -111,9 +113,9 @@ class Model(ModelDesc):
                       .tf.multiply(49)
                       .FullyConnected('fct', 1000)())
         tf.nn.softmax(logits, name='output')
-        ImageNetModel.compute_loss_and_error(logits, label)
+        ImageNetModel.compute_loss_and_error(logits, image, label, EPS)
         #eps = 16.0 # maximum size of adversarial perturbation
-        #ImageNetModel.compute_adv_loss_and_error(logits, image, label, eps)
+        #ImageNetModel.compute_loss_and_error(logits, image, label, eps)
 
 
 class ResNetModel(object):
@@ -183,9 +185,11 @@ if __name__ == '__main__':
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
     parser.add_argument('--eval', action='store_true')
+    parser.add_argument("--eps", type=float, default=16.0)
     args = parser.parse_args()
 
     BITW, BITA, BITG = map(int, args.dorefa.split(','))
+    EPS = args.eps
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
