@@ -171,10 +171,10 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
         cln_acc1.feed(cln_top1.sum(), batch_size)
         cln_acc5.feed(cln_top5.sum(), batch_size)
 
-        print("Cln Top1 Error: %.4f" % cln_acc1.ratio)
-        print("Cln Top5 Error: %.4f" % cln_acc5.ratio)
-        print("Adv Top1 Error: %.4f" % adv_acc1.ratio)
-        print("Adv Top5 Error: %.4f" % adv_acc5.ratio)
+    print("Cln Top1 Error: %.4f" % cln_acc1.ratio)
+    print("Cln Top5 Error: %.4f" % cln_acc5.ratio)
+    print("Adv Top1 Error: %.4f" % adv_acc1.ratio)
+    print("Adv Top5 Error: %.4f" % adv_acc5.ratio)
 
         #mse = np.mean(np.square(adv_x - img))
         #print("MSE: {}".format(mse))
