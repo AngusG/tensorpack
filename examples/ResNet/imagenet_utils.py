@@ -161,8 +161,6 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
 
     for ((adv_x, cln_top1, cln_top5), (img, y)) in zip(pred.get_result(), pred.dataset.get_data()):
 
-        #img = img / 255.0
-
         adv_top1 = sess.run(wrong_top1, feed_dict={x: adv_x * 255.0, label: y})
         adv_top5 = sess.run(wrong_top5, feed_dict={x: adv_x * 255.0, label: y})
 
@@ -175,16 +173,6 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
     print("Cln Top5 Error: %.4f" % cln_acc5.ratio)
     print("Adv Top1 Error: %.4f" % adv_acc1.ratio)
     print("Adv Top5 Error: %.4f" % adv_acc5.ratio)
-
-        #mse = np.mean(np.square(adv_x - img))
-        #print("MSE: {}".format(mse))
-        '''
-        plt.subplot(121)
-        plot_imagenet_data(img[0], str(y[0]))
-        plt.subplot(122)
-        plot_imagenet_data(adv_x[0], 'Adversarial')
-        plt.pause(0.5)
-        '''
 
 def plot_imagenet_data(data, title):
     plt.imshow(data)
