@@ -4,6 +4,7 @@
 
 
 import cv2
+import os
 import numpy as np
 import multiprocessing
 import tensorflow as tf
@@ -98,7 +99,7 @@ def get_imagenet_dataflow(
     http://tensorpack.readthedocs.io/en/latest/tutorial/efficient-dataflow.html
     """
     assert name in ['train', 'val', 'test']
-    #assert datadir is not None
+    assert datadir is not None
     assert isinstance(augmentors, list)
     isTrain = name == 'train'
     cpu = min(30, multiprocessing.cpu_count())
@@ -109,7 +110,7 @@ def get_imagenet_dataflow(
         ds = PrefetchDataZMQ(ds, cpu)
         ds = BatchData(ds, batch_size, remainder=False)
         '''
-        ds = LMDBData('/scratch/gallowaa/imagenet/ILSVRC12-train.lmdb', shuffle=False)
+        ds = LMDBData(os.path.join(datadir, 'ILSVRC12-train.lmdb'), shuffle=False)
         ds = LocallyShuffleData(ds, 50000)
         ds = PrefetchData(ds, 5000, 1)
         ds = LMDBDataPoint(ds)
@@ -119,7 +120,7 @@ def get_imagenet_dataflow(
         ds = BatchData(ds, batch_size, remainder=False)
     else:
         #ds = dataset.ILSVRC12Files(datadir, name, shuffle=False)
-        ds = LMDBData('/scratch/gallowaa/imagenet/ILSVRC12-val.lmdb', shuffle=False)
+        ds = LMDBData(os.path.join(datadir, 'ILSVRC12-val.lmdb'), shuffle=False)
         aug = imgaug.AugmentorList(augmentors)
         ds = LMDBDataPoint(ds)
         '''

@@ -11,8 +11,9 @@ import os
 from tensorpack import *
 from tensorpack.dataflow import dataset
 from tensorpack.tfutils.varreplace import remap_variables
+from tensorpack.utils.gpu import get_nr_gpu
 
-from imagenet_utils import ImageNetModel, fbresnet_augmentor
+from imagenet_utils import ImageNetModel, get_imagenet_dataflow, fbresnet_augmentor
 from dorefa import get_dorefa
 
 """
@@ -31,6 +32,9 @@ EPS = 16
 BITW = 1
 BITA = 4
 BITG = 32
+
+TOTAL_BATCH_SIZE = 128
+BATCH_SIZE = None
 
 
 class Model(ModelDesc):
@@ -118,6 +122,37 @@ class Model(ModelDesc):
         #ImageNetModel.compute_loss_and_error(logits, image, label, eps)
 
 
+def get_data(dataset_name):
+    isTrain = dataset_name == 'train'
+    augmentors = fbresnet_augmentor(isTrain)
+    return get_imagenet_dataflow(
+        args.data, dataset_name, BATCH_SIZE, augmentors)
+
+
+def get_config():
+    logger.auto_set_dir()
+    data_train = get_data('train')
+    data_test = get_data('val')
+
+    return TrainConfig(
+        dataflow=data_train,
+        callbacks=[
+            ModelSaver(),
+            # HumanHyperParamSetter('learning_rate'),
+            ScheduledHyperParamSetter(
+                'learning_rate', [(56, 2e-5), (64, 4e-6)]),
+            InferenceRunner(data_test,
+                            [ScalarStats('cost'),
+                             ClassificationError(
+                                 'wrong-top1', 'val-error-top1'),
+                             ClassificationError('wrong-top5', 'val-error-top5')])
+        ],
+        model=Model(),
+        steps_per_epoch=10000,
+        max_epoch=100,
+    )
+
+
 def get_inference_augmentor():
     return fbresnet_augmentor(False)
 
@@ -198,7 +233,7 @@ if __name__ == '__main__':
         from imagenet_utils import eval_on_ILSVRC12
         ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
         ds = AugmentImageComponent(ds, get_inference_augmentor())
-        ds = BatchData(ds, 384, remainder=True)
+        ds = BatchData(ds, 192, remainder=True)
         eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
     elif args.attack:
@@ -213,3 +248,16 @@ if __name__ == '__main__':
         assert args.load.endswith('.npy')
         run_image(Model(), DictRestore(
             np.load(args.load, encoding='latin1').item()), args.run)
+
+    else:
+        nr_tower = max(get_nr_gpu(), 1)
+        BATCH_SIZE = TOTAL_BATCH_SIZE // nr_tower
+        logger.info("Batch per tower: {}".format(BATCH_SIZE))
+
+        config = get_config()
+        if args.load:
+            if args.load.endswith('.npy'):
+                config.session_init = get_model_loader(args.load)
+            else:
+                config.session_init = SaverRestore(args.load)
+        launch_train_with_config(config, SyncMultiGPUTrainer(nr_tower))
