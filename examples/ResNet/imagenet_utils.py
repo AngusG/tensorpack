@@ -10,9 +10,11 @@ import tensorflow as tf
 from abc import abstractmethod
 
 from tensorpack import imgaug, dataset, ModelDesc, InputDesc
-from tensorpack.dataflow import (
-    AugmentImageComponent, PrefetchDataZMQ,
-    BatchData, MultiThreadMapData)
+from tensorpack.dataflow import *
+'''
+    AugmentImageComponent, PrefetchData, PrefetchDataZMQ,
+    BatchData, MultiThreadMapData, LMDBData, LMDBDataPoint, LocallyShuffleData)
+'''
 from tensorpack.predict import PredictConfig, SimpleDatasetPredictor
 from tensorpack.utils.stats import RatioCounter
 from tensorpack.models import regularize_cost
@@ -96,22 +98,32 @@ def get_imagenet_dataflow(
     http://tensorpack.readthedocs.io/en/latest/tutorial/efficient-dataflow.html
     """
     assert name in ['train', 'val', 'test']
-    assert datadir is not None
+    #assert datadir is not None
     assert isinstance(augmentors, list)
     isTrain = name == 'train'
     cpu = min(30, multiprocessing.cpu_count())
     if isTrain:
+        '''
         ds = dataset.ILSVRC12(datadir, name, shuffle=True)
         ds = AugmentImageComponent(ds, augmentors, copy=False)
         ds = PrefetchDataZMQ(ds, cpu)
         ds = BatchData(ds, batch_size, remainder=False)
+        '''
+        ds = LMDBData('/scratch/gallowaa/imagenet/ILSVRC12-train.lmdb', shuffle=False)
+        ds = LocallyShuffleData(ds, 50000)
+        ds = PrefetchData(ds, 5000, 1)
+        ds = LMDBDataPoint(ds)
+        ds = MapDataComponent(ds, lambda x: cv2.imdecode(x, cv2.IMREAD_COLOR), 0)
+        ds = AugmentImageComponent(ds, augmentors, copy=False)
+        ds = PrefetchDataZMQ(ds, cpu)
+        ds = BatchData(ds, batch_size, remainder=False)
     else:
-        ds = dataset.ILSVRC12Files(datadir, name, shuffle=False)
+        #ds = dataset.ILSVRC12Files(datadir, name, shuffle=False)
+        ds = LMDBData('/scratch/gallowaa/imagenet/ILSVRC12-val.lmdb', shuffle=False)
         aug = imgaug.AugmentorList(augmentors)
-
         def mapf(dp):
             fname, cls = dp
-            im = cv2.imread(fname, cv2.IMREAD_COLOR)
+            im = cv2.imdecode(fname, cv2.IMREAD_COLOR)
             im = aug.augment(im)
             return im, cls
         ds = MultiThreadMapData(ds, cpu, mapf, buffer_size=2000, strict=True)

@@ -163,12 +163,16 @@ class Model(ModelDesc):
         add_moving_summary(tf.reduce_mean(wrong, name='train-error-top5'))
 
         # weight decay on all W of fc layers
-        wd_cost = regularize_cost(
+        wd_cost_1 = regularize_cost(
             'fc.*/W', l2_regularizer(5e-6), name='regularize_cost')
 
+        # weight decay on conv0 fp conv layer
+        wd_cost_2 = regularize_cost(
+            'conv0/W', l2_regularizer(1e-5), name='regularize_cost')
+
         add_param_summary(('.*/W', ['histogram', 'rms']))
-        self.cost = tf.add_n([cost, wd_cost], name='cost')
-        add_moving_summary(cost, wd_cost, self.cost)
+        self.cost = tf.add_n([cost, wd_cost_1, wd_cost_2], name='cost')
+        add_moving_summary(cost, wd_cost_1, self.cost)
 
     def _get_optimizer(self):
         lr = tf.get_variable(
@@ -258,7 +262,7 @@ if __name__ == '__main__':
         '--load', help='load a checkpoint, or a npy (given as the pretrained model)')
     parser.add_argument('--data', help='ILSVRC dataset dir')
     parser.add_argument('--dorefa',
-                        help='number of bits for W,A,G, separated by comma', required=True)
+                        help='number of bits for W,A,G, separated by comma')
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
     parser.add_argument('--eval', action='store_true')
@@ -266,7 +270,8 @@ if __name__ == '__main__':
     parser.add_argument("--eps", type=float, default=16.0)
     args = parser.parse_args()
 
-    BITW, BITA, BITG = map(int, args.dorefa.split(','))
+    if args.dorefa:
+    	BITW, BITA, BITG = map(int, args.dorefa.split(','))
     EPS = args.eps
 
     if args.gpu:
@@ -300,5 +305,8 @@ if __name__ == '__main__':
 
         config = get_config()
         if args.load:
-            config.session_init = SaverRestore(args.load)
+            if args.load.endswith('.npy'):
+                config.session_init = get_model_loader(args.load)
+            else:
+                config.session_init = SaverRestore(args.load)
         launch_train_with_config(config, SyncMultiGPUTrainer(nr_tower))

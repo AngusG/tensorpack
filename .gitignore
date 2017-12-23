@@ -87,3 +87,4 @@ target/
 
 .idea/
 *.diff
+*.sha256
