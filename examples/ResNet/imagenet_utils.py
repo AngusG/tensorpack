@@ -121,12 +121,17 @@ def get_imagenet_dataflow(
         #ds = dataset.ILSVRC12Files(datadir, name, shuffle=False)
         ds = LMDBData('/scratch/gallowaa/imagenet/ILSVRC12-val.lmdb', shuffle=False)
         aug = imgaug.AugmentorList(augmentors)
+        ds = LMDBDataPoint(ds)
+        '''
         def mapf(dp):
             fname, cls = dp
             im = cv2.imdecode(fname, cv2.IMREAD_COLOR)
             im = aug.augment(im)
             return im, cls
         ds = MultiThreadMapData(ds, cpu, mapf, buffer_size=2000, strict=True)
+        '''
+        ds = MapDataComponent(ds, lambda x: cv2.imdecode(x, cv2.IMREAD_COLOR), 0)
+        ds = AugmentImageComponent(ds, augmentors, copy=False)
         ds = BatchData(ds, batch_size, remainder=True)
         ds = PrefetchDataZMQ(ds, 1)
     return ds
