@@ -188,7 +188,7 @@ def get_data(dataset_name):
 
 
 def get_config():
-    logger.auto_set_dir()
+    logger.auto_set_dir(action='n') # when running under job scheduler, always create new
     data_train = get_data('train')
     data_test = get_data('val')
 
