@@ -10,7 +10,7 @@ from tensorpack import logger, QueueInput
 from tensorpack.models import *
 from tensorpack.callbacks import *
 from tensorpack.train import (
-    TrainConfig, SyncMultiGPUTrainerParameterServer, launch_train_with_config)
+    TrainConfig, SyncMultiGPUTrainer, SyncMultiGPUTrainerParameterServer, launch_train_with_config)
 from tensorpack.dataflow import FakeData
 from tensorpack.tfutils import argscope, get_model_loader
 from tensorpack.utils.gpu import get_nr_gpu
@@ -125,10 +125,11 @@ if __name__ == '__main__':
         eval_on_ILSVRC12(model, get_model_loader(args.load), ds)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'imagenet-resnet-d' + str(args.depth)))
+            os.path.join('train_log', 'imagenet-resnet-d' + str(args.depth)), action='n')
 
         config = get_config(model, fake=args.fake)
         if args.load:
             config.session_init = get_model_loader(args.load)
         trainer = SyncMultiGPUTrainerParameterServer(max(get_nr_gpu(), 1))
+        #trainer = SyncMultiGPUTrainer(max(get_nr_gpu(), 1))
         launch_train_with_config(config, trainer)
