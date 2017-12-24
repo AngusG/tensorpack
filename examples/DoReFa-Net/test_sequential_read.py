@@ -29,11 +29,13 @@ TestDataSpeed(ds).start()
 Launch base DataFlow in one process, and parallelize the augmentation with
 PrefetchDataZMQ.
 '''
-# 2.9 it/s
+# 2.9 it/s hdd
+# 6.8 it/s lustre
+# x it/s ssd
 import cv2
 import tensorpack
 from tensorpack.dataflow import *
-ds = LMDBData('/scratch/gallowaa/imagenet/ILSVRC12-train.lmdb', shuffle=False)
+ds = LMDBData('/localscratch/gallowaa.3661974.0/ILSVRC12-val.lmdb', shuffle=False)
 ds = LocallyShuffleData(ds, 50000)
 ds = PrefetchData(ds, 5000, 1)
 ds = LMDBDataPoint(ds)

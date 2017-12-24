@@ -212,7 +212,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', help='the physical ids of GPUs to use')
     parser.add_argument('--load', help='load a npy pretrained model')
-    parser.add_argument('--data', help='ILSVRC dataset dir')
+    parser.add_argument('--data', help='ILSVRC dataset dir', default='/scratch/gallowaa/imagenet')
     parser.add_argument('--dorefa',
                         help='number of bits for W,A,G, separated by comma. Defaults to \'1,4,32\'',
                         default='1,4,32')
@@ -260,4 +260,6 @@ if __name__ == '__main__':
                 config.session_init = get_model_loader(args.load)
             else:
                 config.session_init = SaverRestore(args.load)
-        launch_train_with_config(config, SyncMultiGPUTrainer(nr_tower))
+        trainer = SyncMultiGPUTrainer(nr_tower)
+        #trainer = SyncMultiGPUTrainerParameterServer(nr_tower)
+        launch_train_with_config(config, trainer)

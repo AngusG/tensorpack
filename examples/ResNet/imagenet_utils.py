@@ -23,6 +23,8 @@ from tensorpack.tfutils.summary import add_moving_summary
 
 import matplotlib.pyplot as plt
 
+EPS = 16.0
+
 
 class GoogleNetResize(imgaug.ImageAugmentor):
     """
@@ -224,7 +226,7 @@ class ImageNetModel(ModelDesc):
             image = tf.transpose(image, [0, 3, 1, 2])
 
         logits = self.get_logits(image)
-        loss = ImageNetModel.compute_loss_and_error(logits, label)
+        loss = ImageNetModel.compute_loss_and_error(logits, image, label, EPS)
         wd_loss = regularize_cost('.*/W', tf.contrib.layers.l2_regularizer(self.weight_decay),
                                   name='l2_regularize_loss')
         add_moving_summary(loss, wd_loss)

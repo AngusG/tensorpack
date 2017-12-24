@@ -88,3 +88,6 @@ target/
 .idea/
 *.diff
 *.sha256
+*.out
+lgpu_imgnet.sh
+bgpu_imgnet.sh
