@@ -187,8 +187,9 @@ def get_data(dataset_name):
         args.data, dataset_name, BATCH_SIZE, augmentors)
 
 
-def get_config():
-    logger.auto_set_dir(action='n') # when running under job scheduler, always create new
+def get_config(name):
+    # when running under job scheduler, always create new
+    logger.auto_set_dir(action='n', name=name)
     data_train = get_data('train')
     data_test = get_data('val')
 
@@ -271,7 +272,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.dorefa:
-    	BITW, BITA, BITG = map(int, args.dorefa.split(','))
+        BITW, BITA, BITG = map(int, args.dorefa.split(','))
+    dorefa_string = str(BITW) + '-' + str(BITA) + '-' + str(BITG) + '__'
     EPS = args.eps
 
     if args.gpu:
@@ -303,7 +305,7 @@ if __name__ == '__main__':
         BATCH_SIZE = TOTAL_BATCH_SIZE // nr_tower
         logger.info("Batch per tower: {}".format(BATCH_SIZE))
 
-        config = get_config()
+        config = get_config(dorefa_string)
         if args.load:
             if args.load.endswith('.npy'):
                 config.session_init = get_model_loader(args.load)
