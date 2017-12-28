@@ -8,7 +8,14 @@ import argparse
 import numpy as np
 import os
 
-from tensorpack import *
+from tensorpack.train import (
+    TrainConfig, SyncMultiGPUTrainerParameterServer, launch_train_with_config)
+from tensorpack.models import (
+    LinearWrap, Conv2D, FullyConnected, GlobalAvgPooling, AvgPooling, MaxPooling, BatchNorm, regularize_cost, l2_regularizer)
+from tensorpack.graph_builder import (InputDesc, ModelDesc)
+from tensorpack.callbacks import *
+from tensorpack.utils import logger
+from tensorpack.tfutils import argscope, get_model_loader
 from tensorpack.tfutils.symbolic_functions import prediction_incorrect
 from tensorpack.tfutils.summary import add_moving_summary, add_param_summary
 from tensorpack.tfutils.varreplace import remap_variables
@@ -231,7 +238,7 @@ if __name__ == '__main__':
     parser.add_argument('--attack', action='store_true')
     parser.add_argument("--eps", type=float, default=16.0)
     parser.add_argument("--ps", help='location of parameter server',
-                        type=int, default='cpu', choices=['cpu', 'gpu'])
+                        default='cpu', choices=['cpu', 'gpu'])
     args = parser.parse_args()
 
     if args.dorefa:
@@ -273,5 +280,6 @@ if __name__ == '__main__':
                 config.session_init = get_model_loader(args.load)
             else:
                 config.session_init = SaverRestore(args.load)
-        trainer = SyncMultiGPUTrainerParameterServer(gpus, ps_device=args.ps_device)
+        trainer = SyncMultiGPUTrainerParameterServer(
+            nr_tower, ps_device=args.ps)
         launch_train_with_config(config, trainer)

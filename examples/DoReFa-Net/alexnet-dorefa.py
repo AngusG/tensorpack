@@ -323,5 +323,6 @@ if __name__ == '__main__':
                 config.session_init = get_model_loader(args.load)
             else:
                 config.session_init = SaverRestore(args.load)
-        trainer = SyncMultiGPUTrainerParameterServer(gpus, ps_device=args.ps_device)
+        trainer = SyncMultiGPUTrainerParameterServer(
+            nr_tower, ps_device=args.ps)
         launch_train_with_config(config, trainer)
