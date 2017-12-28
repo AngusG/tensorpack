@@ -91,3 +91,4 @@ target/
 *.out
 lgpu_imgnet.sh
 bgpu_imgnet.sh
+*.sh
