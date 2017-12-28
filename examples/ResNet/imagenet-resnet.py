@@ -23,7 +23,7 @@ from resnet_model import (
     resnet_group, resnet_basicblock, resnet_bottleneck, se_resnet_bottleneck,
     resnet_backbone)
 
-TOTAL_BATCH_SIZE = 256
+TOTAL_BATCH_SIZE = 128
 
 
 class Model(ImageNetModel):

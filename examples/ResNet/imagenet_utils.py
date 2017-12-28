@@ -104,7 +104,8 @@ def get_imagenet_dataflow(
     assert datadir is not None
     assert isinstance(augmentors, list)
     isTrain = name == 'train'
-    cpu = min(30, multiprocessing.cpu_count())
+    #cpu = min(30, multiprocessing.cpu_count())
+    cpu = 12
     if isTrain:
         '''
         ds = dataset.ILSVRC12(datadir, name, shuffle=True)
@@ -113,7 +114,7 @@ def get_imagenet_dataflow(
         ds = BatchData(ds, batch_size, remainder=False)
         '''
         ds = LMDBData(os.path.join(datadir, 'ILSVRC12-train.lmdb'), shuffle=False)
-        ds = LocallyShuffleData(ds, 50000)
+        ds = LocallyShuffleData(ds, 10000)
         ds = PrefetchData(ds, 5000, 1)
         ds = LMDBDataPoint(ds)
         ds = MapDataComponent(ds, lambda x: cv2.imdecode(x, cv2.IMREAD_COLOR), 0)

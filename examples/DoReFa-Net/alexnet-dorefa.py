@@ -288,9 +288,19 @@ if __name__ == '__main__':
 
     elif args.attack:
         from imagenet_utils import attack_on_ILSVRC12
+        # read JPEG files individually
         ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
         ds = AugmentImageComponent(ds, get_inference_augmentor())
         ds = BatchData(ds, 192, remainder=True)
+        '''
+        # sequential read
+        ds = LMDBData(os.path.join(args.data, 'ILSVRC12-val.lmdb'), shuffle=False)
+        ds = LMDBDataPoint(ds)
+        ds = MapDataComponent(ds, lambda x: cv2.imdecode(x, cv2.IMREAD_COLOR), 0)
+        ds = AugmentImageComponent(ds, get_inference_augmentor())
+        ds = BatchData(ds, 192, remainder=True)
+        ds = PrefetchDataZMQ(ds, 1)
+        '''
         print("Attacking with FGSM eps = %.2f" % EPS)
         attack_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
