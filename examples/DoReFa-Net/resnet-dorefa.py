@@ -35,7 +35,7 @@ BITW = 1
 BITA = 4
 BITG = 32
 
-TOTAL_BATCH_SIZE = 32
+TOTAL_BATCH_SIZE = 256
 BATCH_SIZE = None
 
 
@@ -230,6 +230,8 @@ if __name__ == '__main__':
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--attack', action='store_true')
     parser.add_argument("--eps", type=float, default=16.0)
+    parser.add_argument("--ps", help='location of parameter server',
+                        type=int, default='cpu', choices=['cpu', 'gpu'])
     args = parser.parse_args()
 
     if args.dorefa:
@@ -271,4 +273,5 @@ if __name__ == '__main__':
                 config.session_init = get_model_loader(args.load)
             else:
                 config.session_init = SaverRestore(args.load)
-        launch_train_with_config(config, SyncMultiGPUTrainer(nr_tower))
+        trainer = SyncMultiGPUTrainerParameterServer(gpus, ps_device=args.ps_device)
+        launch_train_with_config(config, trainer)
