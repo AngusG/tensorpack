@@ -9,11 +9,13 @@ import numpy as np
 import os
 
 from tensorpack import *
-from tensorpack.dataflow import dataset
+from tensorpack.tfutils.symbolic_functions import prediction_incorrect
+from tensorpack.tfutils.summary import add_moving_summary, add_param_summary
 from tensorpack.tfutils.varreplace import remap_variables
+from tensorpack.dataflow import dataset
 from tensorpack.utils.gpu import get_nr_gpu
 
-from imagenet_utils import ImageNetModel, get_imagenet_dataflow, fbresnet_augmentor
+from imagenet_utils import get_imagenet_dataflow, eval_on_ILSVRC12, fbresnet_augmentor
 from dorefa import get_dorefa
 
 """
@@ -33,7 +35,7 @@ BITW = 1
 BITA = 4
 BITG = 32
 
-TOTAL_BATCH_SIZE = 128
+TOTAL_BATCH_SIZE = 32
 BATCH_SIZE = None
 
 
@@ -114,12 +116,43 @@ class Model(ModelDesc):
                       .apply(nonlin)
                       .GlobalAvgPooling('gap')
                       # this is due to a bug in our model design
-                      .tf.multiply(49)
+                      #.tf.multiply(49)
                       .FullyConnected('fct', 1000)())
         tf.nn.softmax(logits, name='output')
-        ImageNetModel.compute_loss_and_error(logits, image, label, EPS)
+
+        cost = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=logits, labels=label)
+        cost = tf.reduce_mean(cost, name='cross_entropy_loss')
+
+        grads = tf.gradients(cost, image)[0]
+        adv_image = tf.clip_by_value(
+            image + EPS / 255.0 * tf.sign(grads), 0, 1, name='adv_x')
+
+        wrong = prediction_incorrect(logits, label, 1, name='wrong-top1')
+        add_moving_summary(tf.reduce_mean(wrong, name='train-error-top1'))
+        wrong = prediction_incorrect(logits, label, 5, name='wrong-top5')
+        add_moving_summary(tf.reduce_mean(wrong, name='train-error-top5'))
+
+        # weight decay on all W of fc layers
+        wd_cost_1 = regularize_cost(
+            'fc.*/W', l2_regularizer(1e-4), name='regularize_cost')
+
+        # weight decay on conv0 fp conv layer
+        wd_cost_2 = regularize_cost(
+            'conv0/W', l2_regularizer(1e-5), name='regularize_cost')
+
+        add_param_summary(('.*/W', ['histogram', 'rms']))
+        self.cost = tf.add_n([cost, wd_cost_1, wd_cost_2], name='cost')
+        add_moving_summary(cost, wd_cost_1, self.cost)
+
+        #ImageNetModel.compute_loss_and_error(logits, image, label, EPS)
         # eps = 16.0 # maximum size of adversarial perturbation
         #ImageNetModel.compute_loss_and_error(logits, image, label, eps)
+
+    def _get_optimizer(self):
+        lr = tf.get_variable('learning_rate', initializer=0.1, trainable=False)
+        tf.summary.scalar('learning_rate', lr)
+        return tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
 
 
 def get_data(dataset_name):
@@ -129,8 +162,9 @@ def get_data(dataset_name):
         args.data, dataset_name, BATCH_SIZE, augmentors)
 
 
-def get_config():
-    logger.auto_set_dir()
+def get_config(name):
+    # when running under job scheduler, always create new
+    logger.auto_set_dir(action='n', name=name)
     data_train = get_data('train')
     data_test = get_data('val')
 
@@ -140,7 +174,7 @@ def get_config():
             ModelSaver(),
             # HumanHyperParamSetter('learning_rate'),
             ScheduledHyperParamSetter(
-                'learning_rate', [(56, 2e-5), (64, 4e-6)]),
+                'learning_rate', [(30, 1e-2), (60, 1e-3), (85, 1e-4), (95, 1e-5), (105, 1e-6)]),
             InferenceRunner(data_test,
                             [ScalarStats('cost'),
                              ClassificationError(
@@ -148,37 +182,13 @@ def get_config():
                              ClassificationError('wrong-top5', 'val-error-top5')])
         ],
         model=Model(),
-        steps_per_epoch=10000,
-        max_epoch=100,
+        steps_per_epoch=5000,
+        max_epoch=110,
     )
 
 
 def get_inference_augmentor():
     return fbresnet_augmentor(False)
-
-
-class ResNetModel(object):
-    """Model class for CleverHans library."""
-
-    def __init__(self, num_classes):
-        self.num_classes = num_classes
-        self.built = False
-
-    def __call__(self, x_input):
-        """Constructs model and return probabilities for given input."""
-        reuse = True if self.built else None
-        '''
-        with slim.arg_scope(inception.inception_v3_arg_scope()):
-            _, end_points = inception.inception_v3(
-                x_input, num_classes=self.num_classes, is_training=False,
-                reuse=reuse)
-        self.built = True
-        output = end_points['Predictions']
-        # Strip off the extra reshape op at the output
-        probs = output.op.inputs[0]
-        return probs
-        '''
-        model = Model()
 
 
 def run_image(model, sess_init, inputs):
@@ -212,10 +222,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', help='the physical ids of GPUs to use')
     parser.add_argument('--load', help='load a npy pretrained model')
-    parser.add_argument('--data', help='ILSVRC dataset dir', default='/scratch/gallowaa/imagenet')
-    parser.add_argument('--dorefa',
-                        help='number of bits for W,A,G, separated by comma. Defaults to \'1,4,32\'',
-                        default='1,4,32')
+    parser.add_argument('--data', help='ILSVRC dataset dir')
+    parser.add_argument(
+        '--dorefa', help='number of bits for W,A,G, separated by comma')
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
     parser.add_argument('--eval', action='store_true')
@@ -223,7 +232,9 @@ if __name__ == '__main__':
     parser.add_argument("--eps", type=float, default=16.0)
     args = parser.parse_args()
 
-    BITW, BITA, BITG = map(int, args.dorefa.split(','))
+    if args.dorefa:
+        BITW, BITA, BITG = map(int, args.dorefa.split(','))
+    dorefa_string = str(BITW) + '-' + str(BITA) + '-' + str(BITG) + '__'
     EPS = args.eps
 
     if args.gpu:
@@ -233,7 +244,7 @@ if __name__ == '__main__':
         from imagenet_utils import eval_on_ILSVRC12
         ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
         ds = AugmentImageComponent(ds, get_inference_augmentor())
-        ds = BatchData(ds, 192, remainder=True)
+        ds = BatchData(ds, 384, remainder=True)
         eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
     elif args.attack:
@@ -254,12 +265,10 @@ if __name__ == '__main__':
         BATCH_SIZE = TOTAL_BATCH_SIZE // nr_tower
         logger.info("Batch per tower: {}".format(BATCH_SIZE))
 
-        config = get_config()
+        config = get_config(dorefa_string)
         if args.load:
             if args.load.endswith('.npy'):
                 config.session_init = get_model_loader(args.load)
             else:
                 config.session_init = SaverRestore(args.load)
-        trainer = SyncMultiGPUTrainer(nr_tower)
-        #trainer = SyncMultiGPUTrainerParameterServer(nr_tower)
-        launch_train_with_config(config, trainer)
+        launch_train_with_config(config, SyncMultiGPUTrainer(nr_tower))
