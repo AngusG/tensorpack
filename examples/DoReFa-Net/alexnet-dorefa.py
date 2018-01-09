@@ -270,7 +270,7 @@ if __name__ == '__main__':
     parser.add_argument('--attack', action='store_true')
     parser.add_argument("--eps", type=float, default=16.0)
     parser.add_argument("--ps", help='location of parameter server',
-                        type=int, default='cpu', choices=['cpu', 'gpu'])
+                        default='cpu', choices=['cpu', 'gpu'])
     args = parser.parse_args()
 
     if args.dorefa:

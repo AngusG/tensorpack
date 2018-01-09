@@ -19,7 +19,7 @@ from tensorpack.tfutils import argscope, get_model_loader
 from tensorpack.tfutils.symbolic_functions import prediction_incorrect
 from tensorpack.tfutils.summary import add_moving_summary, add_param_summary
 from tensorpack.tfutils.varreplace import remap_variables
-from tensorpack.dataflow import dataset
+from tensorpack.dataflow import dataset, AugmentImageComponent, BatchData
 from tensorpack.utils.gpu import get_nr_gpu
 
 from imagenet_utils import get_imagenet_dataflow, eval_on_ILSVRC12, fbresnet_augmentor
