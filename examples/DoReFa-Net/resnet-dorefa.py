@@ -22,7 +22,8 @@ from tensorpack.tfutils.varreplace import remap_variables
 from tensorpack.dataflow import dataset, AugmentImageComponent, BatchData
 from tensorpack.utils.gpu import get_nr_gpu
 
-from imagenet_utils import get_imagenet_dataflow, eval_on_ILSVRC12, fbresnet_augmentor
+#from imagenet_utils import get_imagenet_dataflow, eval_on_ILSVRC12, fbresnet_augmentor
+from imagenet_utils import get_imagenet_dataflow, fbresnet_augmentor
 from dorefa import get_dorefa
 
 """
@@ -125,13 +126,15 @@ class Model(ModelDesc):
                       # this is due to a bug in our model design
                       #.tf.multiply(49)
                       .FullyConnected('fct', 1000)())
-        tf.nn.softmax(logits, name='output')
+        out = tf.nn.softmax(logits, name='output')
+        max_pred = tf.reduce_max(out, axis=1, name='max_pred')
 
         cost = tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=logits, labels=label)
         cost = tf.reduce_mean(cost, name='cross_entropy_loss')
 
         grads = tf.gradients(cost, image)[0]
+
         adv_image = tf.clip_by_value(
             image + EPS / 255.0 * tf.sign(grads), 0, 1, name='adv_x')
 
@@ -257,12 +260,25 @@ if __name__ == '__main__':
         eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
     elif args.attack:
+        print("Attacking with FGSM eps = %.2f" % EPS)
+
+        '''
+        # to attack from raw images (random read)
         from imagenet_utils import attack_on_ILSVRC12
         ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
         ds = AugmentImageComponent(ds, get_inference_augmentor())
         ds = BatchData(ds, 192, remainder=True)
-        print("Attacking with FGSM eps = %.2f" % EPS)
         attack_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
+        '''
+
+        # to attack from lmdb images (sequential read)
+        from imagenet_utils import attack_on_ILSVRC12
+        BATCH_SIZE = 64
+        logger.info("Batch per tower: {}".format(BATCH_SIZE))
+
+        ds = get_data('val')
+        attack_on_ILSVRC12(Model(), get_model_loader(
+            args.load), ds)
 
     elif args.run:
         assert args.load.endswith('.npy')

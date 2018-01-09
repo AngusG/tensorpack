@@ -61,6 +61,7 @@ class SimpleDatasetPredictor(DatasetPredictorBase):
     """
     Simply create one predictor and run it on the DataFlow.
     """
+
     def __init__(self, config, dataset):
         super(SimpleDatasetPredictor, self).__init__(config, dataset)
         self.predictor = OfflinePredictor(config)
@@ -74,7 +75,29 @@ class SimpleDatasetPredictor(DatasetPredictorBase):
         with get_tqdm(total=sz, disable=(sz == 0)) as pbar:
             for dp in self.dataset.get_data():
                 res = self.predictor(*dp)
-                yield res
+                yield res, dp
+                pbar.update()
+
+
+class AttackDatasetPredictor(DatasetPredictorBase):
+    """
+    Simply create one predictor and run it on the DataFlow.
+    """
+
+    def __init__(self, config, dataset):
+        super(AttackDatasetPredictor, self).__init__(config, dataset)
+        self.predictor = OfflinePredictor(config)
+
+    def get_result(self):
+        self.dataset.reset_state()
+        try:
+            sz = self.dataset.size()
+        except NotImplementedError:
+            sz = 0
+        with get_tqdm(total=sz, disable=(sz == 0)) as pbar:
+            for dp in self.dataset.get_data():
+                res = self.predictor(*dp)
+                yield res, dp
                 pbar.update()
 
 
@@ -99,7 +122,8 @@ class MultiProcessDatasetPredictor(DatasetPredictorBase):
                 outputs in any order.
         """
         if config.return_input:
-            logger.warn("Using the option `return_input` in MultiProcessDatasetPredictor might be slow")
+            logger.warn(
+                "Using the option `return_input` in MultiProcessDatasetPredictor might be slow")
         assert nr_proc > 1, nr_proc
         super(MultiProcessDatasetPredictor, self).__init__(config, dataset)
 
