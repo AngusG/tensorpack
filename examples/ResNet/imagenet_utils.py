@@ -17,8 +17,6 @@ from tensorpack.dataflow import *
     BatchData, MultiThreadMapData, LMDBData, LMDBDataPoint, LocallyShuffleData)
 '''
 from tensorpack.predict import PredictConfig
-from tensorpack.predict import SimpleDatasetPredictor
-#from tensorpack.predict import AttackDatasetPredictor
 from tensorpack.utils.stats import RatioCounter
 from tensorpack.models import regularize_cost
 from tensorpack.tfutils.summary import add_moving_summary
@@ -155,6 +153,7 @@ def eval_on_ILSVRC12(model, sessinit, dataflow):
         output_names=['wrong-top1', 'wrong-top5']
     )
 
+    from tensorpack.predict import SimpleDatasetPredictor
     pred = SimpleDatasetPredictor(pred_config, dataflow)
     acc1, acc5 = RatioCounter(), RatioCounter()
     for top1, top5 in pred.get_result():
@@ -172,11 +171,10 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
         session_init=sessinit,
         input_names=['input', 'label'],
         output_names=['adv_x', 'wrong-top1', 'wrong-top5']
-        #output_names=['adv_x', 'wrong-top1', 'wrong-top5', 'max_pred']
     )
 
-    pred = SimpleDatasetPredictor(pred_config, dataflow)
-    #pred = AttackDatasetPredictor(pred_config, dataflow)
+    from tensorpack.predict import AttackDatasetPredictor
+    pred = AttackDatasetPredictor(pred_config, dataflow)
 
     sess = pred.predictor.sess
     x = pred.predictor.input_tensors[0]
@@ -184,18 +182,11 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
     wrong_top1 = pred.predictor.output_tensors[1]
     wrong_top5 = pred.predictor.output_tensors[2]
 
-    batch_size = 64
     cln_acc1, cln_acc5 = RatioCounter(), RatioCounter()
     adv_acc1, adv_acc5 = RatioCounter(), RatioCounter()
 
-    # for ((adv_x, cln_top1, cln_top5), (img, y)) in zip(pred.get_result(),
-    # pred.dataset.get_data()):
     for ((adv_x, cln_top1, cln_top5), (img, y)) in pred.get_result():
-
-        '''
-        adv_top1 = sess.run(wrong_top1, feed_dict={x: adv_x * 255.0, label: max_pred})
-        adv_top5 = sess.run(wrong_top5, feed_dict={x: adv_x * 255.0, label: max_pred})
-        '''
+        batch_size = cln_top1.shape[0]
         adv_top1 = sess.run(wrong_top1, feed_dict={x: adv_x * 255.0, label: y})
         adv_top5 = sess.run(wrong_top5, feed_dict={x: adv_x * 255.0, label: y})
         adv_acc1.feed(adv_top1.sum(), batch_size)

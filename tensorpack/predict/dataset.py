@@ -21,7 +21,7 @@ from .config import PredictConfig
 from .base import OfflinePredictor
 
 __all__ = ['DatasetPredictorBase', 'SimpleDatasetPredictor',
-           'MultiProcessDatasetPredictor']
+           'AttackDatasetPredictor', 'MultiProcessDatasetPredictor']
 
 
 @six.add_metaclass(ABCMeta)
@@ -75,7 +75,7 @@ class SimpleDatasetPredictor(DatasetPredictorBase):
         with get_tqdm(total=sz, disable=(sz == 0)) as pbar:
             for dp in self.dataset.get_data():
                 res = self.predictor(*dp)
-                yield res, dp
+                yield res
                 pbar.update()
 
 

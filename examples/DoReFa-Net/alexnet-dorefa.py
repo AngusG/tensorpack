@@ -18,6 +18,7 @@ from tensorpack.tfutils.varreplace import remap_variables
 from tensorpack.dataflow import dataset
 from tensorpack.utils.gpu import get_nr_gpu
 
+from misc_utils import contains_lmdb
 from imagenet_utils import get_imagenet_dataflow, eval_on_ILSVRC12, fbresnet_augmentor
 from dorefa import get_dorefa
 
@@ -97,8 +98,8 @@ class Model(ModelDesc):
         def new_get_variable(v):
             name = v.op.name
             # don't binarize first and last layer
-            #if not name.endswith('W') or 'conv0' in name or 'fct' in name:
-            if not name.endswith('W') or name in exclude:
+            #if not name.endswith('W') or name in EXCLUDE:
+            if not name.endswith('W') or 'conv0' in name or 'fct' in name:
                 return v
             else:
                 logger.info("Binarizing weight {}".format(v.op.name))
@@ -169,18 +170,20 @@ class Model(ModelDesc):
         add_moving_summary(tf.reduce_mean(wrong, name='train-error-top5'))
 
         # weight decay on all W of fc layers
-        wd_cost_1 = regularize_cost(
+        wd_cost_fc = regularize_cost(
             'fc.*/W', l2_regularizer(FC_L2_DECAY), name='regularize_cost')
+        loss_terms = [cost, wd_cost_fc]
 
         # weight decay on conv0 fp conv layer
-        '''
-        wd_cost_2 = regularize_cost(
+        #if 'conv0' in EXCLUDE:
+        wd_cost_conv0 = regularize_cost(
             'conv0/W', l2_regularizer(1e-5), name='regularize_cost')
-        '''
+        loss_terms.append(wd_cost_conv0)
+
         add_param_summary(('.*/W', ['histogram', 'rms']))
         #self.cost = tf.add_n([cost, wd_cost_1, wd_cost_2], name='cost')
-        self.cost = tf.add_n([cost, wd_cost_1], name='cost')
-        add_moving_summary(cost, wd_cost_1, self.cost)
+        self.cost = tf.add_n(loss_terms, name='cost')
+        add_moving_summary(cost, wd_cost_fc, self.cost)
 
     def _get_optimizer(self):
         lr = tf.get_variable(
@@ -274,18 +277,18 @@ if __name__ == '__main__':
                         help='number of bits for W,A,G, separated by comma')
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
-    parser.add_argument('--eval', help='evaluate model on clean data', action='store_true')
-    parser.add_argument('--attack', help='evaluate model on adversarial examples', action='store_true')
-    parser.add_argument("--eps", help='magnitude of perturbation', type=float, default=16.0)
+    parser.add_argument(
+        '--eval', help='evaluate model on clean data', action='store_true')
+    parser.add_argument("--eps", help='magnitude of perturbation', type=float)
     parser.add_argument("--ps", help='location of parameter server',
                         default='cpu', choices=['cpu', 'gpu'])
-    parser.add_argument('--first', help='quantize first layer', action='store_true')
+    parser.add_argument(
+        '--first', help='quantize first layer', action='store_true')
     args = parser.parse_args()
 
     if args.dorefa:
         BITW, BITA, BITG = map(int, args.dorefa.split(','))
     model_details = str(BITW) + '-' + str(BITA) + '-' + str(BITG) + '_'
-    EPS = args.eps
 
     if args.first:
         EXCLUDE = ['fct']
@@ -295,29 +298,28 @@ if __name__ == '__main__':
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     if args.eval:
-        from imagenet_utils import eval_on_ILSVRC12
-        ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
-        ds = AugmentImageComponent(ds, get_inference_augmentor())
-        ds = BatchData(ds, 192, remainder=True)
-        eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
+        # eval from lmdb (usually faster)
+        if contains_lmdb(args.data):
+            BATCH_SIZE = 128
+            logger.info("Batch per tower: {}".format(BATCH_SIZE))
+            ds = get_data('val')
+        # eval from raw images (very slow unless data on ssd)
+        else:
+            ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
+            ds = AugmentImageComponent(ds, get_inference_augmentor())
+            ds = BatchData(ds, 128, remainder=True)
 
-    elif args.attack:
-        from imagenet_utils import attack_on_ILSVRC12
-        # read JPEG files individually
-        ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
-        ds = AugmentImageComponent(ds, get_inference_augmentor())
-        ds = BatchData(ds, 192, remainder=True)
-        '''
-        # sequential read
-        ds = LMDBData(os.path.join(args.data, 'ILSVRC12-val.lmdb'), shuffle=False)
-        ds = LMDBDataPoint(ds)
-        ds = MapDataComponent(ds, lambda x: cv2.imdecode(x, cv2.IMREAD_COLOR), 0)
-        ds = AugmentImageComponent(ds, get_inference_augmentor())
-        ds = BatchData(ds, 192, remainder=True)
-        ds = PrefetchDataZMQ(ds, 1)
-        '''
-        print("Attacking with FGSM eps = %.2f" % EPS)
-        attack_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
+        # attack with fgsm if epsilon provided
+        if args.eps:
+            from imagenet_utils import attack_on_ILSVRC12
+            EPS = args.eps
+            print("Attacking with FGSM eps = %.2f" % EPS)
+            attack_on_ILSVRC12(Model(), get_model_loader(
+                args.load), ds)
+        else:
+            from imagenet_utils import eval_on_ILSVRC12
+            print("Evaluating on clean data")
+            eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
     elif args.run:
         assert args.load.endswith('.npy')

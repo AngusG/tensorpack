@@ -44,8 +44,12 @@ BITW = 1
 BITA = 4
 BITG = 32
 
+FC_L2_DECAY = 1e-4
+
 TOTAL_BATCH_SIZE = 256
 BATCH_SIZE = None
+
+EXCLUDE = ['conv0', 'fct']
 
 
 class Model(ModelDesc):
@@ -239,7 +243,6 @@ if __name__ == '__main__':
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
     parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--attack', action='store_true')
     parser.add_argument("--eps", help='magnitude of perturbation', type=float)
     parser.add_argument("--ps", help='location of parameter server',
                         default='cpu', choices=['cpu', 'gpu'])
@@ -248,7 +251,6 @@ if __name__ == '__main__':
     if args.dorefa:
         BITW, BITA, BITG = map(int, args.dorefa.split(','))
     dorefa_string = str(BITW) + '-' + str(BITA) + '-' + str(BITG) + '__'
-    EPS = args.eps
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
@@ -265,15 +267,17 @@ if __name__ == '__main__':
             ds = AugmentImageComponent(ds, get_inference_augmentor())
             ds = BatchData(ds, 128, remainder=True)
 
-            # attack with fgsm if epsilon provided
-            if args.eps:
-                from imagenet_utils import attack_on_ILSVRC12
-                print("Attacking with FGSM eps = %.2f" % EPS)
-                attack_on_ILSVRC12(Model(), get_model_loader(
-                    args.load), ds)
-            else:
-                from imagenet_utils import eval_on_ILSVRC12
-                eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
+        # attack with fgsm if epsilon provided
+        if args.eps:
+            from imagenet_utils import attack_on_ILSVRC12
+            EPS = args.eps
+            print("Attacking with FGSM eps = %.2f" % EPS)
+            attack_on_ILSVRC12(Model(), get_model_loader(
+                args.load), ds)
+        else:
+            from imagenet_utils import eval_on_ILSVRC12
+            print("Evaluating on clean data")
+            eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
     elif args.run:
         assert args.load.endswith('.npy')

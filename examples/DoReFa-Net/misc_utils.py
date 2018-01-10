@@ -1,9 +1,7 @@
 import os
 
 
-def contains_lmdb(path)
-    items = os.listdir(args.data)
-    for i in items:
-        if i.endswith('.lmdb'):
-            return True
-    return False
+def contains_lmdb(path):
+    items = os.listdir(path)
+    conds = [i.endswith('lmdb') for i in items]
+    return True if True in conds else False
