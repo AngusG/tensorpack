@@ -23,6 +23,7 @@ from tensorpack.dataflow import dataset, AugmentImageComponent, BatchData
 from tensorpack.utils.gpu import get_nr_gpu
 
 #from imagenet_utils import get_imagenet_dataflow, eval_on_ILSVRC12, fbresnet_augmentor
+from misc_utils import contains_lmdb
 from imagenet_utils import get_imagenet_dataflow, fbresnet_augmentor
 from dorefa import get_dorefa
 
@@ -239,7 +240,7 @@ if __name__ == '__main__':
         '--run', help='run on a list of images with the pretrained model', nargs='*')
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--attack', action='store_true')
-    parser.add_argument("--eps", type=float, default=16.0)
+    parser.add_argument("--eps", help='magnitude of perturbation', type=float)
     parser.add_argument("--ps", help='location of parameter server',
                         default='cpu', choices=['cpu', 'gpu'])
     args = parser.parse_args()
@@ -253,32 +254,26 @@ if __name__ == '__main__':
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     if args.eval:
-        from imagenet_utils import eval_on_ILSVRC12
-        ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
-        ds = AugmentImageComponent(ds, get_inference_augmentor())
-        ds = BatchData(ds, 384, remainder=True)
-        eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
+        # eval from lmdb (usually faster)
+        if contains_lmdb(args.data):
+            BATCH_SIZE = 128
+            logger.info("Batch per tower: {}".format(BATCH_SIZE))
+            ds = get_data('val')
+        # eval from raw images (very slow unless data on ssd)
+        else:
+            ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
+            ds = AugmentImageComponent(ds, get_inference_augmentor())
+            ds = BatchData(ds, 128, remainder=True)
 
-    elif args.attack:
-        print("Attacking with FGSM eps = %.2f" % EPS)
-
-        '''
-        # to attack from raw images (random read)
-        from imagenet_utils import attack_on_ILSVRC12
-        ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
-        ds = AugmentImageComponent(ds, get_inference_augmentor())
-        ds = BatchData(ds, 192, remainder=True)
-        attack_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
-        '''
-
-        # to attack from lmdb images (sequential read)
-        from imagenet_utils import attack_on_ILSVRC12
-        BATCH_SIZE = 64
-        logger.info("Batch per tower: {}".format(BATCH_SIZE))
-
-        ds = get_data('val')
-        attack_on_ILSVRC12(Model(), get_model_loader(
-            args.load), ds)
+            # attack with fgsm if epsilon provided
+            if args.eps:
+                from imagenet_utils import attack_on_ILSVRC12
+                print("Attacking with FGSM eps = %.2f" % EPS)
+                attack_on_ILSVRC12(Model(), get_model_loader(
+                    args.load), ds)
+            else:
+                from imagenet_utils import eval_on_ILSVRC12
+                eval_on_ILSVRC12(Model(), get_model_loader(args.load), ds)
 
     elif args.run:
         assert args.load.endswith('.npy')

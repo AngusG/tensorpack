@@ -72,8 +72,13 @@ EPS = 16
 BITW = 1
 BITA = 2
 BITG = 6
+
+FC_L2_DECAY = 1e-4
+
 TOTAL_BATCH_SIZE = 128
 BATCH_SIZE = None
+
+EXCLUDE = ['conv0', 'fct']
 
 
 class Model(ModelDesc):
@@ -92,7 +97,8 @@ class Model(ModelDesc):
         def new_get_variable(v):
             name = v.op.name
             # don't binarize first and last layer
-            if not name.endswith('W') or 'conv0' in name or 'fct' in name:
+            #if not name.endswith('W') or 'conv0' in name or 'fct' in name:
+            if not name.endswith('W') or name in exclude:
                 return v
             else:
                 logger.info("Binarizing weight {}".format(v.op.name))
@@ -164,14 +170,16 @@ class Model(ModelDesc):
 
         # weight decay on all W of fc layers
         wd_cost_1 = regularize_cost(
-            'fc.*/W', l2_regularizer(5e-6), name='regularize_cost')
+            'fc.*/W', l2_regularizer(FC_L2_DECAY), name='regularize_cost')
 
         # weight decay on conv0 fp conv layer
+        '''
         wd_cost_2 = regularize_cost(
             'conv0/W', l2_regularizer(1e-5), name='regularize_cost')
-
+        '''
         add_param_summary(('.*/W', ['histogram', 'rms']))
-        self.cost = tf.add_n([cost, wd_cost_1, wd_cost_2], name='cost')
+        #self.cost = tf.add_n([cost, wd_cost_1, wd_cost_2], name='cost')
+        self.cost = tf.add_n([cost, wd_cost_1], name='cost')
         add_moving_summary(cost, wd_cost_1, self.cost)
 
     def _get_optimizer(self):
@@ -266,17 +274,22 @@ if __name__ == '__main__':
                         help='number of bits for W,A,G, separated by comma')
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
-    parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--attack', action='store_true')
-    parser.add_argument("--eps", type=float, default=16.0)
+    parser.add_argument('--eval', help='evaluate model on clean data', action='store_true')
+    parser.add_argument('--attack', help='evaluate model on adversarial examples', action='store_true')
+    parser.add_argument("--eps", help='magnitude of perturbation', type=float, default=16.0)
     parser.add_argument("--ps", help='location of parameter server',
                         default='cpu', choices=['cpu', 'gpu'])
+    parser.add_argument('--first', help='quantize first layer', action='store_true')
     args = parser.parse_args()
 
     if args.dorefa:
         BITW, BITA, BITG = map(int, args.dorefa.split(','))
-    dorefa_string = str(BITW) + '-' + str(BITA) + '-' + str(BITG) + '__'
+    model_details = str(BITW) + '-' + str(BITA) + '-' + str(BITG) + '_'
     EPS = args.eps
+
+    if args.first:
+        EXCLUDE = ['fct']
+        model_details += 'conv0'
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
@@ -317,7 +330,7 @@ if __name__ == '__main__':
         BATCH_SIZE = TOTAL_BATCH_SIZE // nr_tower
         logger.info("Batch per tower: {}".format(BATCH_SIZE))
 
-        config = get_config(dorefa_string)
+        config = get_config(model_details)
         if args.load:
             if args.load.endswith('.npy'):
                 config.session_init = get_model_loader(args.load)

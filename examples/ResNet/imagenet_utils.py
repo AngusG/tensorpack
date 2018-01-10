@@ -115,17 +115,20 @@ def get_imagenet_dataflow(
         ds = PrefetchDataZMQ(ds, cpu)
         ds = BatchData(ds, batch_size, remainder=False)
         '''
-        ds = LMDBData(os.path.join(datadir, 'ILSVRC12-train.lmdb'), shuffle=False)
+        ds = LMDBData(os.path.join(
+            datadir, 'ILSVRC12-train.lmdb'), shuffle=False)
         ds = LocallyShuffleData(ds, 10000)
         ds = PrefetchData(ds, 5000, 1)
         ds = LMDBDataPoint(ds)
-        ds = MapDataComponent(ds, lambda x: cv2.imdecode(x, cv2.IMREAD_COLOR), 0)
+        ds = MapDataComponent(
+            ds, lambda x: cv2.imdecode(x, cv2.IMREAD_COLOR), 0)
         ds = AugmentImageComponent(ds, augmentors, copy=False)
         ds = PrefetchDataZMQ(ds, cpu)
         ds = BatchData(ds, batch_size, remainder=False)
     else:
         #ds = dataset.ILSVRC12Files(datadir, name, shuffle=False)
-        ds = LMDBData(os.path.join(datadir, 'ILSVRC12-val.lmdb'), shuffle=False)
+        ds = LMDBData(os.path.join(
+            datadir, 'ILSVRC12-val.lmdb'), shuffle=False)
         aug = imgaug.AugmentorList(augmentors)
         ds = LMDBDataPoint(ds)
         '''
@@ -136,7 +139,8 @@ def get_imagenet_dataflow(
             return im, cls
         ds = MultiThreadMapData(ds, cpu, mapf, buffer_size=2000, strict=True)
         '''
-        ds = MapDataComponent(ds, lambda x: cv2.imdecode(x, cv2.IMREAD_COLOR), 0)
+        ds = MapDataComponent(
+            ds, lambda x: cv2.imdecode(x, cv2.IMREAD_COLOR), 0)
         ds = AugmentImageComponent(ds, augmentors, copy=False)
         ds = BatchData(ds, batch_size, remainder=True)
         ds = PrefetchDataZMQ(ds, 1)
@@ -184,7 +188,8 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
     cln_acc1, cln_acc5 = RatioCounter(), RatioCounter()
     adv_acc1, adv_acc5 = RatioCounter(), RatioCounter()
 
-    #for ((adv_x, cln_top1, cln_top5), (img, y)) in zip(pred.get_result(), pred.dataset.get_data()):
+    # for ((adv_x, cln_top1, cln_top5), (img, y)) in zip(pred.get_result(),
+    # pred.dataset.get_data()):
     for ((adv_x, cln_top1, cln_top5), (img, y)) in pred.get_result():
 
         '''
@@ -202,6 +207,7 @@ def attack_on_ILSVRC12(model, sessinit, dataflow):
     print("Cln Top5 Error: %.4f" % cln_acc5.ratio)
     print("Adv Top1 Error: %.4f" % adv_acc1.ratio)
     print("Adv Top5 Error: %.4f" % adv_acc5.ratio)
+
 
 def plot_imagenet_data(data, title):
     plt.imshow(data)
