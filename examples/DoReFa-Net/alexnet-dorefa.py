@@ -74,12 +74,14 @@ BITW = 1
 BITA = 2
 BITG = 6
 
-FC_L2_DECAY = 1e-4
+L2_DECAY = 1e-4
 
 TOTAL_BATCH_SIZE = 128
 BATCH_SIZE = None
 
-EXCLUDE = ['conv0', 'fct']
+FCT = 'fct/W'
+CONV0 = 'conv0/W'
+EXCLUDE = [CONV0, FCT]
 
 
 class Model(ModelDesc):
@@ -98,8 +100,8 @@ class Model(ModelDesc):
         def new_get_variable(v):
             name = v.op.name
             # don't binarize first and last layer
-            #if not name.endswith('W') or name in EXCLUDE:
-            if not name.endswith('W') or 'conv0' in name or 'fct' in name:
+            #if not name.endswith('W') or 'conv0' in name or 'fct' in name:
+            if not name.endswith('W') or name in EXCLUDE:
                 return v
             else:
                 logger.info("Binarizing weight {}".format(v.op.name))
@@ -169,21 +171,24 @@ class Model(ModelDesc):
         wrong = prediction_incorrect(logits, label, 5, name='wrong-top5')
         add_moving_summary(tf.reduce_mean(wrong, name='train-error-top5'))
 
+        loss_terms = [cost]
+
         # weight decay on all W of fc layers
-        wd_cost_fc = regularize_cost(
-            'fc.*/W', l2_regularizer(FC_L2_DECAY), name='regularize_cost')
-        loss_terms = [cost, wd_cost_fc]
+        if FCT in EXCLUDE:
+            wd_cost_fct = regularize_cost(
+                'fc.*/W', l2_regularizer(L2_DECAY), name='regularize_fct')
+            loss_terms.append(wd_cost_fct)
 
         # weight decay on conv0 fp conv layer
-        #if 'conv0' in EXCLUDE:
-        wd_cost_conv0 = regularize_cost(
-            'conv0/W', l2_regularizer(1e-5), name='regularize_cost')
-        loss_terms.append(wd_cost_conv0)
+        if CONV0 in EXCLUDE:
+            wd_cost_conv0 = regularize_cost(
+                CONV0, l2_regularizer(L2_DECAY), name='regularize_conv0')
+            loss_terms.append(wd_cost_conv0)
 
         add_param_summary(('.*/W', ['histogram', 'rms']))
         #self.cost = tf.add_n([cost, wd_cost_1, wd_cost_2], name='cost')
         self.cost = tf.add_n(loss_terms, name='cost')
-        add_moving_summary(cost, wd_cost_fc, self.cost)
+        add_moving_summary(cost, wd_cost_fct, self.cost)
 
     def _get_optimizer(self):
         lr = tf.get_variable(
@@ -279,6 +284,7 @@ if __name__ == '__main__':
         '--run', help='run on a list of images with the pretrained model', nargs='*')
     parser.add_argument(
         '--eval', help='evaluate model on clean data', action='store_true')
+    parser.add_argument("--l2", help='L2 regularization applied to non-quantized layers', type=float, default=1e-4)
     parser.add_argument("--eps", help='magnitude of perturbation', type=float)
     parser.add_argument("--ps", help='location of parameter server',
                         default='cpu', choices=['cpu', 'gpu'])
@@ -288,11 +294,11 @@ if __name__ == '__main__':
 
     if args.dorefa:
         BITW, BITA, BITG = map(int, args.dorefa.split(','))
-    model_details = str(BITW) + '-' + str(BITA) + '-' + str(BITG) + '_'
-
+    L2_DECAY = args.l2
+    model_details = str(BITW) + '-' + str(BITA) + '-' + str(BITG) + "_{0:.1e}".format(L2_DECAY) + '_l2_'
     if args.first:
-        EXCLUDE = ['fct']
-        model_details += 'conv0'
+        EXCLUDE = [FCT]
+        model_details += 'conv0_'
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
