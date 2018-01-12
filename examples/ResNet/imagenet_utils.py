@@ -61,7 +61,7 @@ class GoogleNetResize(imgaug.ImageAugmentor):
         return out
 
 
-def fbresnet_augmentor(isTrain):
+def fbresnet_augmentor(isTrain, isCutout):
     """
     Augmentor used in fb.resnet.torch, for BGR images in range [0,255].
     """
@@ -85,6 +85,9 @@ def fbresnet_augmentor(isTrain):
                                  )]),
             imgaug.Flip(horiz=True),
         ]
+        if isCutout:
+            print('fbresnet_augmentor: applying Cutout')
+            augmentors.append(imgaug.Cutout(64))
     else:
         augmentors = [
             imgaug.ResizeShortestEdge(256, cv2.INTER_CUBIC),

@@ -7,7 +7,7 @@ from .base import ImageAugmentor
 import numpy as np
 import cv2
 
-__all__ = ['JpegNoise', 'GaussianNoise', 'SaltPepperNoise']
+__all__ = ['JpegNoise', 'GaussianNoise', 'SaltPepperNoise', 'Cutout']
 
 
 class JpegNoise(ImageAugmentor):
@@ -33,6 +33,7 @@ class GaussianNoise(ImageAugmentor):
     """
     Add random Gaussian noise N(0, sigma^2) of the same shape to img.
     """
+
     def __init__(self, sigma=1, clip=True):
         """
         Args:
@@ -74,3 +75,32 @@ class SaltPepperNoise(ImageAugmentor):
         img[param > (1 - self.white_prob)] = 255
         img[param < self.black_prob] = 0
         return img
+
+
+class Cutout(ImageAugmentor):
+    """
+    Cutout from https://github.com/uoguelph-mlrg/Cutout
+    """
+
+    def __init__(self, length=64):
+        """
+        Args:
+            length (float): side length of box to cutout.
+        """
+        super(Cutout, self).__init__()
+        self._init(locals())
+
+    def _get_augment_params(self, img):
+        return self.rng.randn(*img.shape)
+
+    def _augment(self, img, param):
+        h, w = img.shape[:2]
+        mask = np.ones((h, w, 3), np.float32)
+        y = np.random.randint(h)
+        x = np.random.randint(w)
+        y1 = np.clip(y - self.length // 2, 0, h)
+        y2 = np.clip(y + self.length // 2, 0, h)
+        x1 = np.clip(x - self.length // 2, 0, w)
+        x2 = np.clip(x + self.length // 2, 0, w)
+        mask[y1: y2, x1: x2] = 0.
+        return img * mask

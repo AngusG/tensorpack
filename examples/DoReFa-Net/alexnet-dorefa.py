@@ -196,17 +196,17 @@ class Model(ModelDesc):
         return tf.train.AdamOptimizer(lr, epsilon=1e-5)
 
 
-def get_data(dataset_name):
+def get_data(dataset_name, applyCutout=False):
     isTrain = dataset_name == 'train'
-    augmentors = fbresnet_augmentor(isTrain)
+    augmentors = fbresnet_augmentor(isTrain, applyCutout)
     return get_imagenet_dataflow(
         args.data, dataset_name, BATCH_SIZE, augmentors)
 
 
-def get_config(name):
+def get_config(name, applyCutout):
     # when running under job scheduler, always create new
     logger.auto_set_dir(action='n', name=name)
-    data_train = get_data('train')
+    data_train = get_data('train', applyCutout)
     data_test = get_data('val')
 
     return TrainConfig(
@@ -277,7 +277,7 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', help='the physical ids of GPUs to use')
     parser.add_argument(
         '--load', help='load a checkpoint, or a npy (given as the pretrained model)')
-    parser.add_argument('--data', help='ILSVRC dataset dir')
+    parser.add_argument('--data', help='ILSVRC dataset dir', default='/scratch/ssd/imagenet')
     parser.add_argument('--dorefa',
                         help='number of bits for W,A,G, separated by comma')
     parser.add_argument(
@@ -290,6 +290,8 @@ if __name__ == '__main__':
                         default='cpu', choices=['cpu', 'gpu'])
     parser.add_argument(
         '--first', help='quantize first layer', action='store_true')
+    parser.add_argument(
+        '--cutout', help='apply cutout', action='store_true')
     args = parser.parse_args()
 
     if args.dorefa:
@@ -338,7 +340,8 @@ if __name__ == '__main__':
         BATCH_SIZE = TOTAL_BATCH_SIZE // nr_tower
         logger.info("Batch per tower: {}".format(BATCH_SIZE))
 
-        config = get_config(model_details)
+        applyCutout = True if args.cutout else False
+        config = get_config(model_details, applyCutout)
         if args.load:
             if args.load.endswith('.npy'):
                 config.session_init = get_model_loader(args.load)
