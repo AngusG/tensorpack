@@ -340,7 +340,10 @@ if __name__ == '__main__':
         BATCH_SIZE = TOTAL_BATCH_SIZE // nr_tower
         logger.info("Batch per tower: {}".format(BATCH_SIZE))
 
-        applyCutout = True if args.cutout else False
+        applyCutout = False
+        if args.cutout:
+            model_details += 'cut_'
+            applyCutout = True
         config = get_config(model_details, applyCutout)
         if args.load:
             if args.load.endswith('.npy'):
