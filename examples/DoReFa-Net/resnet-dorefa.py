@@ -242,7 +242,7 @@ if __name__ == '__main__':
         '--dorefa', help='number of bits for W,A,G, separated by comma')
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
-    parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--eval', help='evaluate model on fgsm if --eps provided, otherwise clean', action='store_true')
     parser.add_argument("--eps", help='magnitude of perturbation', type=float)
     parser.add_argument("--ps", help='location of parameter server',
                         default='cpu', choices=['cpu', 'gpu'])

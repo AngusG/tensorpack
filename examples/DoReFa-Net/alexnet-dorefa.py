@@ -283,9 +283,9 @@ if __name__ == '__main__':
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
     parser.add_argument(
-        '--eval', help='evaluate model on clean data', action='store_true')
+        '--eval', help='evaluate model on fgsm if --eps provided, otherwise clean', action='store_true')
     parser.add_argument("--l2", help='L2 regularization applied to non-quantized layers', type=float, default=1e-4)
-    parser.add_argument("--eps", help='magnitude of perturbation', type=float)
+    parser.add_argument("--eps", help='magnitude of perturbation, use with --eval', type=float)
     parser.add_argument("--ps", help='location of parameter server',
                         default='cpu', choices=['cpu', 'gpu'])
     parser.add_argument(
