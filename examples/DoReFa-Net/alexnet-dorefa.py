@@ -277,7 +277,7 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', help='the physical ids of GPUs to use')
     parser.add_argument(
         '--load', help='load a checkpoint, or a npy (given as the pretrained model)')
-    parser.add_argument('--data', help='ILSVRC dataset dir', default='/scratch/ssd/imagenet')
+    parser.add_argument('--data', help='ILSVRC dataset dir')
     parser.add_argument('--dorefa',
                         help='number of bits for W,A,G, separated by comma')
     parser.add_argument(
