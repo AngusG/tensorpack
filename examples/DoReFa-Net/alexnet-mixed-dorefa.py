@@ -17,6 +17,7 @@ from tensorpack.tfutils.summary import add_moving_summary, add_param_summary
 from tensorpack.tfutils.varreplace import remap_variables
 from tensorpack.dataflow import dataset
 from tensorpack.utils.gpu import get_nr_gpu
+from tensorpack.utils.argtools import graph_memoized
 
 from misc_utils import contains_lmdb
 from imagenet_utils import get_imagenet_dataflow, eval_on_ILSVRC12, fbresnet_augmentor
@@ -76,7 +77,7 @@ BITG = 6
 
 L2_DECAY = 1e-4
 
-TOTAL_BATCH_SIZE = 128
+TOTAL_BATCH_SIZE = 64
 BATCH_SIZE = None
 
 FCT = 'fct/W'
@@ -90,11 +91,80 @@ class Model(ModelDesc):
         return [InputDesc(tf.float32, [None, 224, 224, 3], 'input'),
                 InputDesc(tf.int32, [None], 'label')]
 
+    def quantize(self, x, k):
+        G = tf.get_default_graph()
+        n = float(2**k - 1)
+        with G.gradient_override_map({"Round": "Identity"}):
+            return tf.round(x * n) / n
+
+    #@graph_memoized
+    def get_fw(self, bitW):
+        """
+        return the three quantization functions fw, fa, fg, for weights, activations and gradients respectively
+        It's unsafe to call this function multiple times with different parameters
+        """
+        G = tf.get_default_graph()
+
+        def fw(x):
+
+            if bitW == 32:
+                return x
+            if bitW == 1:   # BWN
+                with G.gradient_override_map({"Sign": "Identity"}):
+                    E = tf.stop_gradient(tf.reduce_mean(tf.abs(x)))
+                    return tf.sign(x / E) * E
+            x = tf.tanh(x)
+            x = x / tf.reduce_max(tf.abs(x)) * 0.5 + 0.5
+            return 2 * self.quantize(x, bitW) - 1
+        return fw
+
+    def get_fa(self, bitA):
+
+        def fa(x):
+            if bitA == 32:
+                return x
+            return self.quantize(x, bitA)
+        return fa
+
+    @graph_memoized
+    def get_fg(self, bitG):
+
+        @tf.RegisterGradient("FGGrad")
+        def grad_fg(op, x):
+            rank = x.get_shape().ndims
+            assert rank is not None
+            maxx = tf.reduce_max(tf.abs(x), list(
+                range(1, rank)), keep_dims=True)
+            x = x / maxx
+            n = float(2**bitG - 1)
+            x = x * 0.5 + 0.5 + tf.random_uniform(
+                tf.shape(x), minval=-0.5 / n, maxval=0.5 / n)
+            x = tf.clip_by_value(x, 0.0, 1.0)
+            x = self.quantize(x, bitG) - 0.5
+            return x * maxx * 2
+
+        def fg(x):
+            if bitG == 32:
+                return x
+            G = tf.get_default_graph()
+            with G.gradient_override_map({"Identity": "FGGrad"}):
+                return tf.identity(x)
+        return fg
+
     def _build_graph(self, inputs):
         image, label = inputs
         image = image / 255.0
 
-        fw, fa, fg = get_dorefa(BITW, BITA, BITG)
+        #fw, fa, fg = get_dorefa(BITW, BITA, BITG)
+        fg = self.get_fg(BITG)
+        fa = self.get_fa(BITA)
+        fw = self.get_fw(32)
+        fw_1 = self.get_fw(1)
+        fw_2 = self.get_fw(2)
+        fw_3 = self.get_fw(3)
+        fw_4 = self.get_fw(4)
+        fw_5 = self.get_fw(5)
+        fw_6 = self.get_fw(6)
 
         # monkey-patch tf.get_variable to apply fw
         def new_get_variable(v):
@@ -104,8 +174,27 @@ class Model(ModelDesc):
             if not name.endswith('W') or name in EXCLUDE:
                 return v
             else:
-                logger.info("Binarizing weight {}".format(v.op.name))
-                return fw(v)
+                if '1b' in name:
+                    logger.info("1-bit weight {}".format(v.op.name))
+                    return fw_1(v)
+                elif '2b' in name:
+                    logger.info("2-bit weight {}".format(v.op.name))
+                    return fw_2(v)
+                elif '3b' in name:
+                    logger.info("3-bit weight {}".format(v.op.name))
+                    return fw_2(v)
+                elif '4b' in name:
+                    logger.info("4-bit weight {}".format(v.op.name))
+                    return fw_2(v)
+                elif '5b' in name:
+                    logger.info("5-bit weight {}".format(v.op.name))
+                    return fw_2(v)
+                elif '6b' in name:
+                    logger.info("6-bit weight {}".format(v.op.name))
+                    return fw_2(v)
+                else:
+                    logger.info("full-precision weight {}".format(v.op.name))
+                    return fw(v)
 
         def nonlin(x):
             if BITA == 32:
@@ -118,34 +207,66 @@ class Model(ModelDesc):
         with remap_variables(new_get_variable), \
                 argscope(BatchNorm, decay=0.9, epsilon=1e-4), \
                 argscope([Conv2D, FullyConnected], use_bias=False, nl=tf.identity):
-            logits = (LinearWrap(image)
-                      .tf.concat([Conv2D('conv0_1b', 16, 12, stride=4, padding='VALID'),
-                                  Conv2D('conv0_2b', 16, 12, stride=4, padding='VALID'),
-                                  Conv2D('conv0_3b', 16, 12, stride=4, padding='VALID'),
-                                  Conv2D('conv0_3b', 16, 12, stride=4, padding='VALID'),
-                                  Conv2D('conv0_4b', 16, 12, stride=4, padding='VALID'),
-                                  Conv2D('conv0_5b', 16, 12, stride=4, padding='VALID'),
-                                  Conv2D('conv0_6b', 16, 12, stride=4, padding='VALID')], 3, name='conv0')
-                      #.Conv2D('conv0', 96, 12, stride=4, padding='VALID')
-                      .apply(activate)
-                      .Conv2D('conv1', 256, 5, padding='SAME', split=2)
-                      .apply(fg)
-                      .BatchNorm('bn1')
-                      .MaxPooling('pool1', 3, 2, padding='SAME')
-                      .apply(activate)
 
-                      .Conv2D('conv2', 384, 3)
-                      .apply(fg)
-                      .BatchNorm('bn2')
-                      .MaxPooling('pool2', 3, 2, padding='SAME')
-                      .apply(activate)
+            conv0 = tf.concat([Conv2D('conv0_1b', image, 16, 12, stride=4, padding='VALID'),
+                               Conv2D('conv0_2b', image, 16, 12,
+                                      stride=4, padding='VALID'),
+                               Conv2D('conv0_3b', image, 16, 12,
+                                      stride=4, padding='VALID'),
+                               Conv2D('conv0_4b', image, 16, 12,
+                                      stride=4, padding='VALID'),
+                               Conv2D('conv0_5b', image, 16, 12,
+                                      stride=4, padding='VALID'),
+                               Conv2D('conv0_6b', image, 16, 12, stride=4, padding='VALID')], 3, name='conv0')
+            l = (LinearWrap(conv0)
+                 .apply(activate)())
 
-                      .Conv2D('conv3', 384, 3, split=2)
-                      .apply(fg)
-                      .BatchNorm('bn3')
-                      .apply(activate)
+            '''
+            note split = 2 appears to be for historical accuracy 
+            as AlexNet was split across two 3GB GPUs
+            .Conv2D('conv1', 256, 5, padding='SAME', split=2)
+            '''
+            conv1 = tf.concat([Conv2D('conv1_1b', l, 64, 5, padding='SAME'),
+                               Conv2D('conv1_2b', l, 64, 5, padding='SAME'),
+                               Conv2D('conv1_3b', l, 64, 5, padding='SAME'),
+                               Conv2D('conv1_4b', l, 32, 5, padding='SAME'),
+                               Conv2D('conv1_5b', l, 32, 5, padding='SAME')], 3, name='conv1')
+            l = (LinearWrap(conv1)
+                 .apply(fg)
+                 .BatchNorm('bn1')
+                 .MaxPooling('pool1', 3, 2, padding='SAME')
+                 .apply(activate)())
 
-                      .Conv2D('conv4', 256, 3, split=2)
+            #.Conv2D('conv2', 384, 3)
+            conv2 = tf.concat([Conv2D('conv2_1b', l, 96, 3),
+                               Conv2D('conv2_2b', l, 96, 3),
+                               Conv2D('conv2_3b', l, 96, 3),
+                               Conv2D('conv2_4b', l, 48, 3),
+                               Conv2D('conv2_5b', l, 48, 3)], 3, name='conv2')
+            l = (LinearWrap(conv2)
+                 .apply(fg)
+                 .BatchNorm('bn2')
+                 .MaxPooling('pool2', 3, 2, padding='SAME')
+                 .apply(activate)())
+
+            # .Conv2D('conv3', 384, 3, split=2)
+            conv3 = tf.concat([Conv2D('conv3_5b', l, 48, 3),
+                               Conv2D('conv3_4b', l, 48, 3),
+                               Conv2D('conv3_3b', l, 96, 3),
+                               Conv2D('conv3_2b', l, 96, 3),
+                               Conv2D('conv3_1b', l, 96, 3)], 3, name='conv3')
+            l = (LinearWrap(conv3)
+                 .apply(fg)
+                 .BatchNorm('bn3')
+                 .apply(activate)())
+
+            #.Conv2D('conv4', 256, 3, split=2)
+            conv4 = tf.concat([Conv2D('conv4_4b', l, 64, 3),
+                               Conv2D('conv4_3b', l, 64, 3),
+                               Conv2D('conv4_2b', l, 64, 3),
+                               Conv2D('conv4_1b', l, 64, 3)], 3, name='conv4')
+
+            logits = (LinearWrap(conv4)
                       .apply(fg)
                       .BatchNorm('bn4')
                       .MaxPooling('pool4', 3, 2, padding='VALID')
@@ -162,50 +283,50 @@ class Model(ModelDesc):
                       .apply(nonlin)
                       .FullyConnected('fct', 1000, use_bias=True)())
 
-        output=tf.nn.softmax(logits, name='output')
+        output = tf.nn.softmax(logits, name='output')
         # correct = tf.equal(tf.argmax(output, 1), label)
 
-        cost=tf.nn.sparse_softmax_cross_entropy_with_logits(
+        cost = tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=logits, labels=label)
-        cost=tf.reduce_mean(cost, name='cross_entropy_loss')
+        cost = tf.reduce_mean(cost, name='cross_entropy_loss')
 
-        grads=tf.gradients(cost, image)[0]
-        adv_image=tf.clip_by_value(
+        grads = tf.gradients(cost, image)[0]
+        adv_image = tf.clip_by_value(
             image + EPS / 255.0 * tf.sign(grads), 0, 1, name='adv_x')
 
-        wrong=prediction_incorrect(logits, label, 1, name='wrong-top1')
+        wrong = prediction_incorrect(logits, label, 1, name='wrong-top1')
         add_moving_summary(tf.reduce_mean(wrong, name='train-error-top1'))
-        wrong=prediction_incorrect(logits, label, 5, name='wrong-top5')
+        wrong = prediction_incorrect(logits, label, 5, name='wrong-top5')
         add_moving_summary(tf.reduce_mean(wrong, name='train-error-top5'))
 
-        loss_terms=[cost]
+        loss_terms = [cost]
 
         # weight decay on all W of fc layers
         if FCT in EXCLUDE:
-            wd_cost_fct=regularize_cost(
+            wd_cost_fct = regularize_cost(
                 'fc.*/W', l2_regularizer(L2_DECAY), name='regularize_fct')
             loss_terms.append(wd_cost_fct)
 
         # weight decay on conv0 fp conv layer
         if CONV0 in EXCLUDE:
-            wd_cost_conv0=regularize_cost(
+            wd_cost_conv0 = regularize_cost(
                 CONV0, l2_regularizer(L2_DECAY), name='regularize_conv0')
             loss_terms.append(wd_cost_conv0)
 
         add_param_summary(('.*/W', ['histogram', 'rms']))
         # self.cost = tf.add_n([cost, wd_cost_1, wd_cost_2], name='cost')
-        self.cost=tf.add_n(loss_terms, name='cost')
+        self.cost = tf.add_n(loss_terms, name='cost')
         add_moving_summary(cost, wd_cost_fct, self.cost)
 
     def _get_optimizer(self):
-        lr=tf.get_variable(
+        lr = tf.get_variable(
             'learning_rate', initializer=1e-4, trainable=False)
         return tf.train.AdamOptimizer(lr, epsilon=1e-5)
 
 
 def get_data(dataset_name, applyCutout=False):
-    isTrain=dataset_name == 'train'
-    augmentors=fbresnet_augmentor(isTrain, applyCutout)
+    isTrain = dataset_name == 'train'
+    augmentors = fbresnet_augmentor(isTrain, applyCutout)
     return get_imagenet_dataflow(
         args.data, dataset_name, BATCH_SIZE, augmentors)
 
@@ -213,8 +334,8 @@ def get_data(dataset_name, applyCutout=False):
 def get_config(name, applyCutout):
     # when running under job scheduler, always create new
     logger.auto_set_dir(action='n', name=name)
-    data_train=get_data('train', applyCutout)
-    data_test=get_data('val')
+    data_train = get_data('train', applyCutout)
+    data_test = get_data('val')
 
     return TrainConfig(
         dataflow=data_train,
@@ -240,47 +361,47 @@ def get_inference_augmentor():
 
 
 def run_image(model, sess_init, inputs):
-    pred_config=PredictConfig(
+    pred_config = PredictConfig(
         model=model,
         session_init=sess_init,
         input_names=['input'],
         output_names=['output']
     )
-    predictor=OfflinePredictor(pred_config)
-    meta=dataset.ILSVRCMeta()
-    pp_mean=meta.get_per_pixel_mean()
-    pp_mean_224=pp_mean[16:-16, 16:-16, :]
-    words=meta.get_synset_words_1000()
+    predictor = OfflinePredictor(pred_config)
+    meta = dataset.ILSVRCMeta()
+    pp_mean = meta.get_per_pixel_mean()
+    pp_mean_224 = pp_mean[16:-16, 16:-16, :]
+    words = meta.get_synset_words_1000()
 
     def resize_func(im):
-        h, w=im.shape[:2]
-        scale=256.0 / min(h, w)
-        desSize=map(int, (max(224, min(w, scale * w)),
+        h, w = im.shape[:2]
+        scale = 256.0 / min(h, w)
+        desSize = map(int, (max(224, min(w, scale * w)),
                             max(224, min(h, scale * h))))
-        im=cv2.resize(im, tuple(desSize), interpolation=cv2.INTER_CUBIC)
+        im = cv2.resize(im, tuple(desSize), interpolation=cv2.INTER_CUBIC)
         return im
-    transformers=imgaug.AugmentorList([
+    transformers = imgaug.AugmentorList([
         imgaug.MapImage(resize_func),
         imgaug.CenterCrop((224, 224)),
         imgaug.MapImage(lambda x: x - pp_mean_224),
     ])
     for f in inputs:
         assert os.path.isfile(f)
-        img=cv2.imread(f).astype('float32')
+        img = cv2.imread(f).astype('float32')
         assert img is not None
 
-        img=transformers.augment(img)[np.newaxis, :, :, :]
-        outputs=predictor(img)[0]
-        prob=outputs[0]
-        ret=prob.argsort()[-10:][::-1]
+        img = transformers.augment(img)[np.newaxis, :, :, :]
+        outputs = predictor(img)[0]
+        prob = outputs[0]
+        ret = prob.argsort()[-10:][::-1]
 
-        names=[words[i] for i in ret]
+        names = [words[i] for i in ret]
         print(f + ":")
         print(list(zip(names, prob[ret])))
 
 
 if __name__ == '__main__':
-    parser=argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', help='the physical ids of GPUs to use')
     parser.add_argument(
         '--load', help='load a checkpoint, or a npy (given as the pretrained model)')
@@ -301,36 +422,36 @@ if __name__ == '__main__':
         '--first', help='quantize first layer', action='store_true')
     parser.add_argument(
         '--cutout', help='apply cutout', action='store_true')
-    args=parser.parse_args()
+    args = parser.parse_args()
 
     if args.dorefa:
-        BITW, BITA, BITG=map(int, args.dorefa.split(','))
-    L2_DECAY=args.l2
-    model_details=str(BITW) + '-' + str(BITA) + '-' + \
-                      str(BITG) + "_{0:.1e}".format(L2_DECAY) + '_l2_'
+        BITW, BITA, BITG = map(int, args.dorefa.split(','))
+    L2_DECAY = args.l2
+    model_details = str(BITW) + '-' + str(BITA) + '-' + \
+        str(BITG) + "_{0:.1e}".format(L2_DECAY) + '_l2_'
     if args.first:
-        EXCLUDE=[FCT]
+        EXCLUDE = [FCT]
         model_details += 'conv0_'
 
     if args.gpu:
-        os.environ['CUDA_VISIBLE_DEVICES']=args.gpu
+        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     if args.eval:
         # eval from lmdb (usually faster)
         if contains_lmdb(args.data):
-            BATCH_SIZE=128
+            BATCH_SIZE = 128
             logger.info("Batch per tower: {}".format(BATCH_SIZE))
-            ds=get_data('val')
+            ds = get_data('val')
         # eval from raw images (very slow unless data on ssd)
         else:
-            ds=dataset.ILSVRC12(args.data, 'val', shuffle=False)
-            ds=AugmentImageComponent(ds, get_inference_augmentor())
-            ds=BatchData(ds, 128, remainder=True)
+            ds = dataset.ILSVRC12(args.data, 'val', shuffle=False)
+            ds = AugmentImageComponent(ds, get_inference_augmentor())
+            ds = BatchData(ds, 128, remainder=True)
 
         # attack with fgsm if epsilon provided
         if args.eps:
             from imagenet_utils import attack_on_ILSVRC12
-            EPS=args.eps
+            EPS = args.eps
             print("Attacking with FGSM eps = %.2f" % EPS)
             attack_on_ILSVRC12(Model(), get_model_loader(
                 args.load), ds)
@@ -346,20 +467,20 @@ if __name__ == '__main__':
         sys.exit()
 
     else:
-        nr_tower=max(get_nr_gpu(), 1)
-        BATCH_SIZE=TOTAL_BATCH_SIZE // nr_tower
+        nr_tower = max(get_nr_gpu(), 1)
+        BATCH_SIZE = TOTAL_BATCH_SIZE // nr_tower
         logger.info("Batch per tower: {}".format(BATCH_SIZE))
 
-        applyCutout=False
+        applyCutout = False
         if args.cutout:
             model_details += 'cut_'
-            applyCutout=True
-        config=get_config(model_details, applyCutout)
+            applyCutout = True
+        config = get_config(model_details, applyCutout)
         if args.load:
             if args.load.endswith('.npy'):
-                config.session_init=get_model_loader(args.load)
+                config.session_init = get_model_loader(args.load)
             else:
-                config.session_init=SaverRestore(args.load)
-        trainer=SyncMultiGPUTrainerParameterServer(
+                config.session_init = SaverRestore(args.load)
+        trainer = SyncMultiGPUTrainerParameterServer(
             nr_tower, ps_device=args.ps)
         launch_train_with_config(config, trainer)
