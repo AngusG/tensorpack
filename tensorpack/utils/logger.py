@@ -125,7 +125,7 @@ def auto_set_dir(action=None, name=None):
     "./train_log/{scriptname}:{name}". "scriptname" is the name of the main python file currently running"""
     mod = sys.modules['__main__']
     basename = os.path.basename(mod.__file__)
-    auto_dirname = os.path.join('train_log', basename[:basename.rfind('.')])
+    auto_dirname = os.path.join('/scratch/gallowaa/imagenet/train-logs/dorefa', basename[:basename.rfind('.')])
     if name:
         auto_dirname += ':%s' % name
     set_logger_dir(auto_dirname, action=action)
