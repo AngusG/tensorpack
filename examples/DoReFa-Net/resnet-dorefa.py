@@ -169,10 +169,17 @@ class Model(ModelDesc):
         tf.summary.scalar('learning_rate', lr)
         return tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
 
-
+'''
 def get_data(dataset_name):
     isTrain = dataset_name == 'train'
     augmentors = fbresnet_augmentor(isTrain)
+    return get_imagenet_dataflow(
+        args.data, dataset_name, BATCH_SIZE, augmentors)
+'''
+
+def get_data(dataset_name, applyCutout=False):
+    isTrain = dataset_name == 'train'
+    augmentors = fbresnet_augmentor(isTrain, applyCutout)
     return get_imagenet_dataflow(
         args.data, dataset_name, BATCH_SIZE, augmentors)
 
@@ -180,7 +187,8 @@ def get_data(dataset_name):
 def get_config(name):
     # when running under job scheduler, always create new
     logger.auto_set_dir(action='n', name=name)
-    data_train = get_data('train')
+    #data_train = get_data('train')
+    data_train = get_data('train', applyCutout)
     data_test = get_data('val')
 
     return TrainConfig(
@@ -242,7 +250,8 @@ if __name__ == '__main__':
         '--dorefa', help='number of bits for W,A,G, separated by comma')
     parser.add_argument(
         '--run', help='run on a list of images with the pretrained model', nargs='*')
-    parser.add_argument('--eval', help='evaluate model on fgsm if --eps provided, otherwise clean', action='store_true')
+    parser.add_argument(
+        '--eval', help='evaluate model on fgsm if --eps provided, otherwise clean', action='store_true')
     parser.add_argument("--eps", help='magnitude of perturbation', type=float)
     parser.add_argument("--ps", help='location of parameter server',
                         default='cpu', choices=['cpu', 'gpu'])
