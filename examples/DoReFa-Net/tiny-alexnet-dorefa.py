@@ -119,42 +119,18 @@ class Model(ModelDesc):
                 argscope(BatchNorm, decay=0.9, epsilon=1e-4), \
                 argscope([Conv2D, FullyConnected], use_bias=False, nl=tf.identity):
             logits = (LinearWrap(image)
-                      .Conv2D('conv0', 96, 12, stride=8, padding='SAME')
+                      .Conv2D('conv0', 96, 12, stride=8, padding='VALID')
                       .apply(activate)
-                      #.Conv2D('conv1', 256, 5, padding='SAME', split=2)
-                      .apply(fg)
-                      #.BatchNorm('bn1')
-                      #.MaxPooling('pool1', 3, 2, padding='SAME')
-                      .apply(activate)
+                      #.BatchNorm('bn0')
 
-                      #.Conv2D('conv2', 384, 3)
                       .Conv2D('conv1', 384, 6, stride=3)
-                      .apply(fg)
-                      #.BatchNorm('bn2')
-                      #.MaxPooling('pool2', 3, 2, padding='SAME')
                       .apply(activate)
+                      #.BatchNorm('bn1')
 
-                      #.Conv2D('conv3', 384, 3, split=2)
                       .Conv2D('conv2', 256, 3, stride=3)
-                      .apply(fg)
-                      #.BatchNorm('bn3')
                       .apply(activate)
+                      #.BatchNorm('bn2')                      
 
-                      #.Conv2D('conv4', 256, 3, split=2)
-                      #.Conv2D('conv4', 256, 3, stride=2)
-                      .apply(fg)
-                      #.BatchNorm('bn4')
-                      #.MaxPooling('pool4', 3, 2, padding='VALID')
-                      .apply(activate)
-
-                      #.FullyConnected('fc0', 2048)
-                      #.apply(fg)
-                      #.BatchNorm('bnfc0')
-                      #.apply(activate)
-
-                      #.FullyConnected('fc1', 4096)
-                      .apply(fg)
-                      #.BatchNorm('bnfc1')
                       .apply(nonlin)
                       .FullyConnected('fct', 1000, use_bias=True)())
 
