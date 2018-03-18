@@ -155,46 +155,50 @@ class Model(ModelDesc):
         loss_terms = [cost]
 
         # always apply wd to conv0
-        wd_l1_conv0_cost = regularize_cost(
-            'conv0/W', l1_regularizer(L1_DECAY), name='conv0_l1')
-        loss_terms.append(wd_l1_conv0_cost)
-        add_moving_summary(wd_l1_conv0_cost)
+        if L1_DECAY > 0:
+            wd_l1_conv0_cost = regularize_cost(
+                'conv0/W', l1_regularizer(L1_DECAY), name='conv0_l1')
+            loss_terms.append(wd_l1_conv0_cost)
+            add_moving_summary(wd_l1_conv0_cost)
 
-        wd_l2_conv0_cost = regularize_cost(
-            'conv0/W', l2_regularizer(L2_DECAY), name='conv0_l2')
-        loss_terms.append(wd_l2_conv0_cost)
-        add_moving_summary(wd_l2_conv0_cost)
+        if L2_DECAY > 0:
+            wd_l2_conv0_cost = regularize_cost(
+                'conv0/W', l2_regularizer(L2_DECAY), name='conv0_l2')
+            loss_terms.append(wd_l2_conv0_cost)
+            add_moving_summary(wd_l2_conv0_cost)
 
         if BITW == 32:
-            wd_l1_conv1_cost = regularize_cost(
-                'conv1/W', l1_regularizer(L1_DECAY), name='conv1_l1')
-            loss_terms.append(wd_l1_conv1_cost)
-            add_moving_summary(wd_l1_conv1_cost)
+            if L1_DECAY > 0:
+                wd_l1_conv1_cost = regularize_cost(
+                    'conv1/W', l1_regularizer(L1_DECAY), name='conv1_l1')
+                loss_terms.append(wd_l1_conv1_cost)
+                add_moving_summary(wd_l1_conv1_cost)
+                wd_l1_conv2_cost = regularize_cost(
+                    'conv2/W', l1_regularizer(L1_DECAY), name='conv2_l1')
+                loss_terms.append(wd_l1_conv2_cost)
+                add_moving_summary(wd_l1_conv2_cost)
 
-            wd_l2_conv1_cost = regularize_cost(
-                'conv1/W', l2_regularizer(L2_DECAY), name='conv1_l2')
-            loss_terms.append(wd_l2_conv1_cost)
-            add_moving_summary(wd_l2_conv1_cost)
+            if L2_DECAY > 0:
+                wd_l2_conv1_cost = regularize_cost(
+                    'conv1/W', l2_regularizer(L2_DECAY), name='conv1_l2')
+                loss_terms.append(wd_l2_conv1_cost)
+                add_moving_summary(wd_l2_conv1_cost)
+                wd_l2_conv2_cost = regularize_cost(
+                    'conv2/W', l2_regularizer(L2_DECAY), name='conv2_l2')
+                loss_terms.append(wd_l2_conv2_cost)
+                add_moving_summary(wd_l2_conv2_cost)
 
-            wd_l1_conv2_cost = regularize_cost(
-                'conv2/W', l1_regularizer(L1_DECAY), name='conv2_l1')
-            loss_terms.append(wd_l1_conv2_cost)
-            add_moving_summary(wd_l1_conv2_cost)
+        if L1_DECAY > 0:
+            wd_l1_fct_cost = regularize_cost(
+                'fct/W', l1_regularizer(L1_DECAY), name='fct_l1')
+            loss_terms.append(wd_l1_fct_cost)
+            add_moving_summary(wd_l1_fct_cost)
 
-            wd_l2_conv2_cost = regularize_cost(
-                'conv2/W', l2_regularizer(L2_DECAY), name='conv2_l2')
-            loss_terms.append(wd_l2_conv2_cost)
-            add_moving_summary(wd_l2_conv2_cost)
-
-        wd_l1_fct_cost = regularize_cost(
-            'fct/W', l1_regularizer(L1_DECAY), name='fct_l1')
-        loss_terms.append(wd_l1_fct_cost)
-        add_moving_summary(wd_l1_fct_cost)
-
-        wd_l2_fct_cost = regularize_cost(
-            'fct/W', l2_regularizer(L2_DECAY), name='fct_l2')
-        loss_terms.append(wd_l2_fct_cost)
-        add_moving_summary(wd_l2_fct_cost)
+        if L2_DECAY > 0:
+            wd_l2_fct_cost = regularize_cost(
+                'fct/W', l2_regularizer(L2_DECAY), name='fct_l2')
+            loss_terms.append(wd_l2_fct_cost)
+            add_moving_summary(wd_l2_fct_cost)
 
         add_param_summary(('.*/W', ['histogram', 'rms']))
         self.cost = tf.add_n(loss_terms, name='cost')
