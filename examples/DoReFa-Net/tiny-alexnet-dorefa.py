@@ -154,38 +154,51 @@ class Model(ModelDesc):
 
         loss_terms = [cost]
 
+        # always apply wd to conv0
+        wd_l1_conv0_cost = regularize_cost(
+            'conv0/W', l1_regularizer(L1_DECAY), name='conv0_l1')
+        loss_terms.append(wd_l1_conv0_cost)
+        add_moving_summary(wd_l1_conv0_cost)
+
+        wd_l2_conv0_cost = regularize_cost(
+            'conv0/W', l2_regularizer(L2_DECAY), name='conv0_l2')
+        loss_terms.append(wd_l2_conv0_cost)
+        add_moving_summary(wd_l2_conv0_cost)
+
         if BITW == 32:
-            wd_l1_cost = regularize_cost(
-                '*/W', l1_regularizer(L1_DECAY), name='l1_penalty')
-            loss_terms.append(wd_l1_cost)
-            '''
-            wd_l2_cost = regularize_cost(
-                '*/W', l2_regularizer(L2_DECAY), name='l2_penalty')
-            loss_terms.append(wd_l2_cost)
-            '''
-        else:
-            # only apply wd to conv0 
-            wd_l1_conv0_cost = regularize_cost(
-                'conv0/W', l1_regularizer(L1_DECAY), name='conv0_l1_penalty')
-            loss_terms.append(wd_l1_conv0_cost)
+            wd_l1_conv1_cost = regularize_cost(
+                'conv1/W', l1_regularizer(L1_DECAY), name='conv1_l1')
+            loss_terms.append(wd_l1_conv1_cost)
+            add_moving_summary(wd_l1_conv1_cost)
 
-            wd_l2_conv0_cost = regularize_cost(
-                'conv0/W', l2_regularizer(L2_DECAY), name='conv0_l2_penalty')
-            loss_terms.append(wd_l2_conv0_cost)            
+            wd_l2_conv1_cost = regularize_cost(
+                'conv1/W', l2_regularizer(L2_DECAY), name='conv1_l2')
+            loss_terms.append(wd_l2_conv1_cost)
+            add_moving_summary(wd_l2_conv1_cost)
 
-            # .. and fct
-            wd_l1_fct_cost = regularize_cost(
-                'fct/W', l1_regularizer(L1_DECAY), name='fct_l1_penalty')
-            loss_terms.append(wd_l1_fct_cost)
-            '''
-            wd_l2_fct_cost = regularize_cost(
-                'fct/W', l2_regularizer(L2_DECAY), name='fct_l2_penalty')
-            loss_terms.append(wd_l2_fct_cost)            
-            '''
+            wd_l1_conv2_cost = regularize_cost(
+                'conv2/W', l1_regularizer(L1_DECAY), name='conv2_l1')
+            loss_terms.append(wd_l1_conv2_cost)
+            add_moving_summary(wd_l1_conv2_cost)
+
+            wd_l2_conv2_cost = regularize_cost(
+                'conv2/W', l2_regularizer(L2_DECAY), name='conv2_l2')
+            loss_terms.append(wd_l2_conv2_cost)
+            add_moving_summary(wd_l2_conv2_cost)
+
+        wd_l1_fct_cost = regularize_cost(
+            'fct/W', l1_regularizer(L1_DECAY), name='fct_l1')
+        loss_terms.append(wd_l1_fct_cost)
+        add_moving_summary(wd_l1_fct_cost)
+
+        wd_l2_fct_cost = regularize_cost(
+            'fct/W', l2_regularizer(L2_DECAY), name='fct_l2')
+        loss_terms.append(wd_l2_fct_cost)
+        add_moving_summary(wd_l2_fct_cost)
 
         add_param_summary(('.*/W', ['histogram', 'rms']))
         self.cost = tf.add_n(loss_terms, name='cost')
-        add_moving_summary(cost, wd_l1_conv0_cost, wd_l1_fct_cost, self.cost)
+        add_moving_summary(cost, self.cost)
 
     def _get_optimizer(self):
         lr = tf.get_variable(
@@ -312,14 +325,15 @@ if __name__ == '__main__':
 
     if args.dorefa:
         BITW, BITA, BITG = map(int, args.dorefa.split(','))
-    
+
     L1_DECAY = args.l1
     L2_DECAY = args.l2
 
     use_bias = True if args.bias else False
-    
+
     model_details = str(BITW) + '-' + str(BITA) + '-' + \
-        str(BITG) + "_{0:.1e}".format(L2_DECAY) + '_l2_'
+        str(BITG) + "_{0:.1e}".format(L1_DECAY) + '_l1_'
+        + "_{0:.1e}".format(L2_DECAY) + '_l2_'
     if args.first:
         EXCLUDE = [FCT]
         model_details += 'conv0_'
