@@ -168,11 +168,11 @@ class Model(ModelDesc):
             wd_l1_conv0_cost = regularize_cost(
                 'conv0/W', l1_regularizer(L1_DECAY), name='conv0_l1_penalty')
             loss_terms.append(wd_l1_conv0_cost)
-            '''
+
             wd_l2_conv0_cost = regularize_cost(
                 'conv0/W', l2_regularizer(L2_DECAY), name='conv0_l2_penalty')
             loss_terms.append(wd_l2_conv0_cost)            
-            '''
+
             # .. and fct
             wd_l1_fct_cost = regularize_cost(
                 'fct/W', l1_regularizer(L1_DECAY), name='fct_l1_penalty')
