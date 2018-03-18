@@ -74,7 +74,8 @@ BITW = 1
 BITA = 2
 BITG = 6
 
-L2_DECAY = 1e-4
+L1_DECAY = 0
+L2_DECAY = 0
 
 TOTAL_BATCH_SIZE = 128
 BATCH_SIZE = None
@@ -82,7 +83,8 @@ BATCH_SIZE = None
 FCT = 'fct/W'
 CONV0 = 'conv0/W'
 EXCLUDE = [CONV0, FCT]
-use_bias = True
+use_bias = False
+
 
 class Model(ModelDesc):
 
@@ -129,7 +131,7 @@ class Model(ModelDesc):
 
                       .Conv2D('conv2', 256, 3, stride=3, use_bias=use_bias)
                       .apply(activate)
-                      #.BatchNorm('bn2')                      
+                      #.BatchNorm('bn2')
 
                       .apply(nonlin)
                       .FullyConnected('fct', 1000, use_bias=use_bias)())
@@ -152,21 +154,34 @@ class Model(ModelDesc):
 
         loss_terms = [cost]
 
-        # weight decay on all W of fc layers
-        # if FCT in EXCLUDE:
-        wd_cost_fct = regularize_cost(
-            'fc.*/W', l2_regularizer(L2_DECAY), name='regularize_fc')
-        loss_terms.append(wd_cost_fct)
+        if BITW == 32:
+            wd_l1_cost = regularize_cost(
+                '*/W', l1_regularizer(L1_DECAY), name='l1_penalty')
+            loss_terms.append(wd_l2_cost)
 
-        # weight decay on conv0 fp conv layer
-        # if CONV0 in EXCLUDE:
-        wd_cost_conv0 = regularize_cost(
-            'conv*/W', l2_regularizer(L2_DECAY), name='regularize_conv')
-            #CONV0, l2_regularizer(L2_DECAY), name='regularize_conv0')
-        loss_terms.append(wd_cost_conv0)
+            wd_l2_cost = regularize_cost(
+                '*/W', l2_regularizer(L2_DECAY), name='l2_penalty')
+            loss_terms.append(wd_l2_cost)
+        else:
+            # only apply wd to conv0 
+            wd_l1_conv0_cost = regularize_cost(
+                'conv0/W', l1_regularizer(L1_DECAY), name='conv0_l1_penalty')
+            loss_terms.append(wd_l1_conv0_cost)
+
+            wd_l2_conv0_cost = regularize_cost(
+                'conv0/W', l2_regularizer(L2_DECAY), name='conv0_l2_penalty')
+            loss_terms.append(wd_l2_conv0_cost)            
+
+            # .. and fct
+            wd_l1_fct_cost = regularize_cost(
+                'fct/W', l1_regularizer(L1_DECAY), name='fct_l1_penalty')
+            loss_terms.append(wd_l1_fct_cost)
+
+            wd_l2_fct_cost = regularize_cost(
+                'fct/W', l2_regularizer(L2_DECAY), name='fct_l2_penalty')
+            loss_terms.append(wd_l2_fct_cost)            
 
         add_param_summary(('.*/W', ['histogram', 'rms']))
-        #self.cost = tf.add_n([cost, wd_cost_1, wd_cost_2], name='cost')
         self.cost = tf.add_n(loss_terms, name='cost')
         add_moving_summary(cost, wd_cost_fct, self.cost)
 
@@ -278,7 +293,9 @@ if __name__ == '__main__':
     parser.add_argument(
         '--eval', help='evaluate model on fgsm if --eps provided, otherwise clean', action='store_true')
     parser.add_argument(
-        "--l2", help='L2 regularization applied to non-quantized layers', type=float, default=1e-4)
+        "--l1", help='L1 regularization applied to non-quantized layers', type=float, default=0)
+    parser.add_argument(
+        "--l2", help='L2 regularization applied to non-quantized layers', type=float, default=0)
     parser.add_argument(
         "--eps", help='magnitude of perturbation, use with --eval', type=float)
     parser.add_argument("--ps", help='location of parameter server',
@@ -287,11 +304,18 @@ if __name__ == '__main__':
         '--first', help='quantize first layer', action='store_true')
     parser.add_argument(
         '--cutout', help='apply cutout', action='store_true')
+    parser.add_argument(
+        '--bias', help='use biases', action='store_true')
     args = parser.parse_args()
 
     if args.dorefa:
         BITW, BITA, BITG = map(int, args.dorefa.split(','))
+    
+    L1_DECAY = args.l1
     L2_DECAY = args.l2
+
+    use_bias = True if args.bias else False
+    
     model_details = str(BITW) + '-' + str(BITA) + '-' + \
         str(BITG) + "_{0:.1e}".format(L2_DECAY) + '_l2_'
     if args.first:
