@@ -185,7 +185,7 @@ class Model(ModelDesc):
 
         add_param_summary(('.*/W', ['histogram', 'rms']))
         self.cost = tf.add_n(loss_terms, name='cost')
-        add_moving_summary(cost, wd_cost_fct, self.cost)
+        add_moving_summary(cost, wd_l1_conv0_cost, wd_l1_fct_cost, self.cost)
 
     def _get_optimizer(self):
         lr = tf.get_variable(
