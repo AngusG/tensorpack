@@ -332,8 +332,8 @@ if __name__ == '__main__':
     use_bias = True if args.bias else False
 
     model_details = str(BITW) + '-' + str(BITA) + '-' + \
-        str(BITG) + "_{0:.1e}".format(L1_DECAY) + '_l1_'
-        + "_{0:.1e}".format(L2_DECAY) + '_l2_'
+        str(BITG) + "_{0:.1e}".format(L1_DECAY) + '_l1_' + \
+        "_{0:.1e}".format(L2_DECAY) + '_l2_'
     if args.first:
         EXCLUDE = [FCT]
         model_details += 'conv0_'
