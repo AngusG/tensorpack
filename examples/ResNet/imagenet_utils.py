@@ -108,7 +108,7 @@ def get_imagenet_dataflow(
     assert isinstance(augmentors, list)
     isTrain = name == 'train'
     #cpu = min(30, multiprocessing.cpu_count())
-    cpu = 12
+    cpu = 6
     if isTrain:
         '''
         ds = dataset.ILSVRC12(datadir, name, shuffle=True)
