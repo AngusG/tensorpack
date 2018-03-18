@@ -82,7 +82,7 @@ BATCH_SIZE = None
 FCT = 'fct/W'
 CONV0 = 'conv0/W'
 EXCLUDE = [CONV0, FCT]
-
+use_bias = True
 
 class Model(ModelDesc):
 
@@ -119,20 +119,20 @@ class Model(ModelDesc):
                 argscope(BatchNorm, decay=0.9, epsilon=1e-4), \
                 argscope([Conv2D, FullyConnected], use_bias=False, nl=tf.identity):
             logits = (LinearWrap(image)
-                      .Conv2D('conv0', 96, 12, stride=8, padding='VALID')
+                      .Conv2D('conv0', 96, 12, stride=8, padding='VALID', use_bias=use_bias)
                       .apply(activate)
                       #.BatchNorm('bn0')
 
-                      .Conv2D('conv1', 384, 6, stride=3)
+                      .Conv2D('conv1', 384, 6, stride=3, use_bias=use_bias)
                       .apply(activate)
                       #.BatchNorm('bn1')
 
-                      .Conv2D('conv2', 256, 3, stride=3)
+                      .Conv2D('conv2', 256, 3, stride=3, use_bias=use_bias)
                       .apply(activate)
                       #.BatchNorm('bn2')                      
 
                       .apply(nonlin)
-                      .FullyConnected('fct', 1000, use_bias=True)())
+                      .FullyConnected('fct', 1000, use_bias=use_bias)())
 
         output = tf.nn.softmax(logits, name='output')
         #correct = tf.equal(tf.argmax(output, 1), label)
@@ -187,8 +187,20 @@ def get_config(name, applyCutout):
     # when running under job scheduler, always create new
     logger.auto_set_dir(action='n', name=name)
     data_train = get_data('train', applyCutout)
-    data_test = get_data('val')
-
+    #data_test = get_data('val')
+    return TrainConfig(
+        dataflow=data_train,
+        callbacks=[
+            ModelSaver(),
+            # HumanHyperParamSetter('learning_rate'),
+            ScheduledHyperParamSetter(
+                'learning_rate', [(56, 2e-5), (64, 4e-6)])
+        ],
+        model=Model(),
+        steps_per_epoch=10000,
+        max_epoch=100,
+    )
+    '''
     return TrainConfig(
         dataflow=data_train,
         callbacks=[
@@ -206,6 +218,7 @@ def get_config(name, applyCutout):
         steps_per_epoch=10000,
         max_epoch=100,
     )
+    '''
 
 
 def get_inference_augmentor():
