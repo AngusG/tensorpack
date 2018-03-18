@@ -157,7 +157,7 @@ class Model(ModelDesc):
         if BITW == 32:
             wd_l1_cost = regularize_cost(
                 '*/W', l1_regularizer(L1_DECAY), name='l1_penalty')
-            loss_terms.append(wd_l2_cost)
+            loss_terms.append(wd_l1_cost)
 
             wd_l2_cost = regularize_cost(
                 '*/W', l2_regularizer(L2_DECAY), name='l2_penalty')
