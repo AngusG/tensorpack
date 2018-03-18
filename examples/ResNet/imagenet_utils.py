@@ -23,7 +23,7 @@ from tensorpack.tfutils.summary import add_moving_summary
 
 import matplotlib.pyplot as plt
 
-EPS = 16.0
+EPS = 8.0
 
 
 class GoogleNetResize(imgaug.ImageAugmentor):
@@ -107,8 +107,8 @@ def get_imagenet_dataflow(
     assert datadir is not None
     assert isinstance(augmentors, list)
     isTrain = name == 'train'
-    #cpu = min(30, multiprocessing.cpu_count())
-    cpu = 6
+    cpu = min(30, multiprocessing.cpu_count())
+    #cpu = 6
     if isTrain:
         '''
         ds = dataset.ILSVRC12(datadir, name, shuffle=True)
