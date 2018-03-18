@@ -129,7 +129,7 @@ class Model(ModelDesc):
                       .apply(activate)
                       #.BatchNorm('bn1')
 
-                      .Conv2D('conv2', 256, 3, stride=3, use_bias=use_bias)
+                      .Conv2D('conv2', 384, 3, stride=3, use_bias=use_bias)
                       .apply(activate)
                       #.BatchNorm('bn2')
 
